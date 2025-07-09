@@ -33,3 +33,5 @@
 from .vec_env import VecEnv
 
 from .ppo import *
+from .dwl_ppo import *
+from .amp_him_ppo import *

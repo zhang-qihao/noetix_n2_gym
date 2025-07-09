@@ -333,16 +333,16 @@
     name="R_arm_shoulder_pitch_Link">
     <inertial>
       <origin
-        xyz="0.0029295 7.0945E-05 -0.0083273"
+        xyz="0.0029295 0.0009965 -0.0082628"
         rpy="0 0 0" />
       <mass
         value="0.53256" />
       <inertia
         ixx="0.00025803"
-        ixy="3.9225E-08"
-        ixz="-8.4168E-07"
+        ixy="3.9348E-08"
+        ixz="-8.4172E-07"
         iyy="0.00019086"
-        iyz="2.8399E-07"
+        iyz="2.8405E-07"
         izz="0.00019" />
     </inertial>
     <visual>
@@ -391,14 +391,14 @@
     name="R_arm_shoulder_roll_Link">
     <inertial>
       <origin
-        xyz="0.0036281 -0.029171 -0.05579"
+        xyz="0.0036277 -0.029074 -0.054867"
         rpy="0 0 0" />
       <mass
         value="0.77513" />
       <inertia
         ixx="0.00046269"
-        ixy="-3.0575E-06"
-        ixz="-1.5131E-06"
+        ixy="-3.0555E-06"
+        ixz="-1.5146E-06"
         iyy="0.00035149"
         iyz="-1.9611E-05"
         izz="0.00040004" />
@@ -449,16 +449,16 @@
     name="R_arm_shoulder_yaw_Link">
     <inertial>
       <origin
-        xyz="0.0025992 -5.4055E-05 -0.15892"
+        xyz="0.0025992 -4.9093E-05 -0.15799"
         rpy="0 0 0" />
       <mass
         value="0.62854" />
       <inertia
         ixx="0.00025606"
-        ixy="6.9256E-08"
-        ixz="1.0036E-06"
+        ixy="7.1141E-08"
+        ixz="1.0035E-06"
         iyy="0.00034723"
-        iyz="8.1612E-07"
+        iyz="8.1583E-07"
         izz="0.00022463" />
     </inertial>
     <visual>
@@ -547,7 +547,7 @@
     name="R_arm_elbow_joint"
     type="fixed">
     <origin
-      xyz="0.0030284 0 -0.17234"
+      xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />
     <parent
       link="R_arm_shoulder_yaw_Link" />
@@ -565,16 +565,16 @@
     name="R_arm_hand_link">
     <inertial>
       <origin
-        xyz="-2.1189E-08 -0.00018152 -0.015769"
+        xyz="-2.6372E-08 0.00036865 -0.014941"
         rpy="0 0 0" />
       <mass
         value="0.063335" />
       <inertia
         ixx="1.7685E-05"
-        ixy="-2.3626E-11"
-        ixz="7.6415E-11"
+        ixy="4.0855E-11"
+        ixz="8.2119E-11"
         iyy="1.7585E-05"
-        iyz="-4.1586E-11"
+        iyz="-1.3619E-11"
         izz="1.1594E-05" />
     </inertial>
     <visual>
@@ -605,7 +605,7 @@
     name="R_arm_hand_joint"
     type="fixed" dont_collapse="true">
     <origin
-      xyz="-0.0045 0.00018648 -0.18067"
+      xyz="-0.0045 -0.00036368 -0.1815"
       rpy="0 0 0" />
     <parent
       link="R_arm_elbow_Link" />
@@ -670,7 +670,7 @@
       lower="-0.65"
       upper="1"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="L_leg_hip_roll_link">
@@ -728,7 +728,7 @@
       lower="-0.65"
       upper="1"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="L_leg_hip_pitch_link">
@@ -902,7 +902,7 @@
       lower="-1"
       upper="0.75"
       effort="70"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_yaw_link">
@@ -960,7 +960,7 @@
       lower="-1"
       upper="0.65"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_roll_link">
@@ -1018,7 +1018,7 @@
       lower="-1"
       upper="0.65"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_pitch_link">
@@ -1192,6 +1192,6 @@
       lower="-1"
       upper="0.75"
       effort="70"
-      velocity="12" />
+      velocity="14" />
   </joint>
 </robot>

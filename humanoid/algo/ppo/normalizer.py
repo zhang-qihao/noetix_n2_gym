@@ -52,6 +52,9 @@ class EmpiricalNormalization(nn.Module):
         if self.training:
             self.update(x)
         return (x - self._mean) / (self._std + self.eps)
+    
+    def normalize(self, data):
+        return (data - self._mean) / (self._std + self.eps)
 
     @torch.jit.unused
     def update(self, x):

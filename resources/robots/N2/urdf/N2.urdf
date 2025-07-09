@@ -99,8 +99,8 @@
     <limit
       lower="-2.7"
       upper="2.7"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="L_arm_shoulder_roll_Link">
@@ -157,8 +157,8 @@
     <limit
       lower="0"
       upper="2.1"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="L_arm_shoulder_yaw_Link">
@@ -169,12 +169,12 @@
       <mass
         value="0.62854" />
       <inertia
-        ixx="0.00025606"
+        ixx="0.01"
         ixy="-7.1141E-08"
         ixz="1.0035E-06"
-        iyy="0.00034723"
+        iyy="0.01"
         iyz="-8.1583E-07"
-        izz="0.00022463" />
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -215,8 +215,8 @@
     <limit
       lower="-2.7"
       upper="2.7"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="L_arm_elbow_Link">
@@ -273,8 +273,8 @@
     <limit
       lower="-1.8"
       upper="1"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="L_arm_hand_Link">
@@ -333,16 +333,16 @@
     name="R_arm_shoulder_pitch_Link">
     <inertial>
       <origin
-        xyz="0.0029295 7.0945E-05 -0.0083273"
+        xyz="0.0029295 0.0009965 -0.0082628"
         rpy="0 0 0" />
       <mass
         value="0.53256" />
       <inertia
         ixx="0.00025803"
-        ixy="3.9225E-08"
-        ixz="-8.4168E-07"
+        ixy="3.9348E-08"
+        ixz="-8.4172E-07"
         iyy="0.00019086"
-        iyz="2.8399E-07"
+        iyz="2.8405E-07"
         izz="0.00019" />
     </inertial>
     <visual>
@@ -384,21 +384,21 @@
     <limit
       lower="-2.7"
       upper="2.7"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="R_arm_shoulder_roll_Link">
     <inertial>
       <origin
-        xyz="0.0036281 -0.029171 -0.05579"
+        xyz="0.0036277 -0.029074 -0.054867"
         rpy="0 0 0" />
       <mass
         value="0.77513" />
       <inertia
         ixx="0.00046269"
-        ixy="-3.0575E-06"
-        ixz="-1.5131E-06"
+        ixy="-3.0555E-06"
+        ixz="-1.5146E-06"
         iyy="0.00035149"
         iyz="-1.9611E-05"
         izz="0.00040004" />
@@ -442,24 +442,24 @@
     <limit
       lower="-2.1"
       upper="0"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="R_arm_shoulder_yaw_Link">
     <inertial>
       <origin
-        xyz="0.0025992 -5.4055E-05 -0.15892"
+        xyz="0.0025992 -4.9093E-05 -0.15799"
         rpy="0 0 0" />
       <mass
         value="0.62854" />
       <inertia
-        ixx="0.00025606"
-        ixy="6.9256E-08"
-        ixz="1.0036E-06"
-        iyy="0.00034723"
-        iyz="8.1612E-07"
-        izz="0.00022463" />
+        ixx="0.01"
+        ixy="7.1141E-08"
+        ixz="1.0035E-06"
+        iyy="0.01"
+        iyz="8.1583E-07"
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -500,8 +500,8 @@
     <limit
       lower="-2.7"
       upper="2.7"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="R_arm_elbow_Link">
@@ -547,7 +547,7 @@
     name="R_arm_elbow_joint"
     type="revolute">
     <origin
-      xyz="0.0030284 0 -0.17234"
+      xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />
     <parent
       link="R_arm_shoulder_yaw_Link" />
@@ -558,23 +558,23 @@
     <limit
       lower="-1.8"
       upper="1"
-      effort="36"
-      velocity="12" />
+      effort="27"
+      velocity="10" />
   </joint>
   <link
     name="R_arm_hand_link">
-    <inertial>
+   <inertial>
       <origin
-        xyz="-2.1189E-08 -0.00018152 -0.015769"
+        xyz="-2.6372E-08 0.00036865 -0.014941"
         rpy="0 0 0" />
       <mass
         value="0.063335" />
       <inertia
         ixx="1.7685E-05"
-        ixy="-2.3626E-11"
-        ixz="7.6415E-11"
+        ixy="4.0855E-11"
+        ixz="8.2119E-11"
         iyy="1.7585E-05"
-        iyz="-4.1586E-11"
+        iyz="-1.3619E-11"
         izz="1.1594E-05" />
     </inertial>
     <visual>
@@ -605,7 +605,7 @@
     name="R_arm_hand_joint"
     type="fixed" dont_collapse="true">
     <origin
-      xyz="-0.0045 0.00018648 -0.18067"
+      xyz="-0.0045 -0.00036368 -0.1815"
       rpy="0 0 0" />
     <parent
       link="R_arm_elbow_Link" />
@@ -855,12 +855,12 @@
       <mass
         value="0.62716" />
       <inertia
-        ixx="0.00018261"
+        ixx="0.01"
         ixy="2.5025E-06"
         ixz="8.0412E-06"
-        iyy="0.00094108"
+        iyy="0.01"
         iyz="-1.5265E-06"
-        izz="0.0010634" />
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -901,23 +901,23 @@
     <limit
       lower="-1"
       upper="0.75"
-      effort="36"
-      velocity="12" />
+      effort="70"
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_yaw_link">
     <inertial>
       <origin
-        xyz="-0.022328 0.0011618 0.019477"
+        xyz="-0.022328 0.0010228 0.019477"
         rpy="0 0 0" />
       <mass
         value="1.3433" />
       <inertia
         ixx="0.0021778"
-        ixy="1.0306E-06"
-        ixz="8.3589E-06"
+        ixy="7.7601E-07"
+        ixz="8.3614E-06"
         iyy="0.0012569"
-        iyz="-5.5086E-06"
+        iyz="-5.4961E-06"
         izz="0.0011856" />
     </inertial>
     <visual>
@@ -960,7 +960,7 @@
       lower="-1"
       upper="0.65"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_roll_link">
@@ -970,12 +970,12 @@
         rpy="0 0 0" />
       <mass
         value="1.9691" />
-      <inertia
-        ixx="0.0020006"
-        ixy="1.7274E-05"
-        ixz="3.6722E-06"
+     <inertia
+        ixx="0.0020007"
+        ixy="1.7283E-05"
+        ixz="3.6844E-06"
         iyy="0.0041236"
-        iyz="-3.2652E-06"
+        iyz="-3.2614E-06"
         izz="0.0025413" />
     </inertial>
     <visual>
@@ -1018,23 +1018,23 @@
       lower="-1"
       upper="0.65"
       effort="90"
-      velocity="12" />
+      velocity="14" />
   </joint>
   <link
     name="R_leg_hip_pitch_link">
     <inertial>
       <origin
-        xyz="0.0048945 -0.046711 -0.028102"
+        xyz="0.0048954 -0.046764 -0.028101"
         rpy="0 0 0" />
       <mass
-        value="3.1964" />
+        value="3.1965" />
       <inertia
-        ixx="0.0091977"
-        ixy="-5.4566E-05"
-        ixz="0.00059008"
+        ixx="0.0091975"
+        ixy="-5.4555E-05"
+        ixz="0.00059007"
         iyy="0.011943"
-        iyz="0.00045887"
-        izz="0.0032839" />
+        iyz="0.00045886"
+        izz="0.0032838" />
     </inertial>
     <visual>
       <origin
@@ -1082,17 +1082,17 @@
     name="R_leg_knee_link">
     <inertial>
       <origin
-        xyz="0.019954 -0.022258 -0.088003"
+        xyz="0.019958 -0.022256 -0.088003"
         rpy="0 0 0" />
       <mass
-        value="1.6354" />
+        value="1.6352" />
       <inertia
-        ixx="0.0045742"
-        ixy="5.6593E-06"
-        ixz="-3.0427E-05"
-        iyy="0.0049693"
-        iyz="-0.00017638"
-        izz="0.0006191" />
+        ixx="0.0045741"
+        ixy="5.6619E-06"
+        ixz="-3.0407E-05"
+        iyy="0.0049692"
+        iyz="-0.00017639"
+        izz="0.00061901" />
     </inertial>
     <visual>
       <origin
@@ -1140,17 +1140,17 @@
     name="R_leg_ankle_link">
     <inertial>
       <origin
-        xyz="0.016737 -0.019095 -0.019954"
+        xyz="0.016737 -0.019094 -0.019954"
         rpy="0 0 0" />
       <mass
         value="0.62716" />
-      <inertia
-        ixx="0.00018262"
-        ixy="-2.5114E-06"
-        ixz="8.0411E-06"
-        iyy="0.00094107"
+     <inertia
+        ixx="0.01"
+        ixy="-2.5025E-06"
+        ixz="8.0412E-06"
+        iyy="0.01"
         iyz="1.5265E-06"
-        izz="0.0010634" />
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -1191,7 +1191,7 @@
     <limit
       lower="-1"
       upper="0.75"
-      effort="36"
+      effort="70"
       velocity="14" />
   </joint>
 </robot>

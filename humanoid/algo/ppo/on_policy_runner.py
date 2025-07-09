@@ -9,6 +9,7 @@ import os
 import statistics
 import time
 import torch
+import json
 from collections import deque
 
 import humanoid
@@ -52,11 +53,11 @@ class OnPolicyRunner:
         # resolve type of privileged observations
         if self.training_type == "rl":
             self.privileged_obs_type = "critic"
-        if self.training_type == "distillation":
-            if "teacher" in extras["observations"]:
-                self.privileged_obs_type = "teacher"  # policy distillation
-            else:
-                self.privileged_obs_type = None
+        # if self.training_type == "distillation":
+        #     if "teacher" in extras["observations"]:
+        #         self.privileged_obs_type = "teacher"  # policy distillation
+        #     else:
+        #         self.privileged_obs_type = None
 
         # resolve dimensions of privileged observations
         if self.privileged_obs_type is not None:
@@ -70,18 +71,18 @@ class OnPolicyRunner:
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
-        # resolve dimension of rnd gated state
-        if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
-            # check if rnd gated state is present
-            rnd_state = extras["observations"].get("rnd_state")
-            if rnd_state is None:
-                raise ValueError("Observations for the key 'rnd_state' not found in infos['observations'].")
-            # get dimension of rnd gated state
-            num_rnd_state = rnd_state.shape[1]
-            # add rnd gated state to config
-            self.alg_cfg["rnd_cfg"]["num_states"] = num_rnd_state
-            # scale down the rnd weight with timestep (similar to how rewards are scaled down in legged_gym envs)
-            self.alg_cfg["rnd_cfg"]["weight"] *= env.unwrapped.step_dt
+        # # resolve dimension of rnd gated state
+        # if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
+        #     # check if rnd gated state is present
+        #     rnd_state = extras["observations"].get("rnd_state")
+        #     if rnd_state is None:
+        #         raise ValueError("Observations for the key 'rnd_state' not found in infos['observations'].")
+        #     # get dimension of rnd gated state
+        #     num_rnd_state = rnd_state.shape[1]
+        #     # add rnd gated state to config
+        #     self.alg_cfg["rnd_cfg"]["num_states"] = num_rnd_state
+        #     # scale down the rnd weight with timestep (similar to how rewards are scaled down in legged_gym envs)
+        #     self.alg_cfg["rnd_cfg"]["weight"] *= env.unwrapped.step_dt
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
@@ -152,6 +153,15 @@ class OnPolicyRunner:
             else:
                 raise ValueError("Logger type not found. Please choose 'neptune', 'wandb' or 'tensorboard'.")
 
+            with open(os.path.join(self.log_dir, 'train_cfg.json'), 'w') as f:
+                print(self.log_dir)
+                if "symmetry_cfg" in self.alg_cfg:
+                    env = self.alg_cfg['symmetry_cfg'].pop("_env")
+                    f.write(json.dumps(self.cfg, sort_keys=False, indent=4, separators=(',', ': ')))
+                    self.alg_cfg['symmetry_cfg']["_env"] = env
+                else:
+                    f.write(json.dumps(self.cfg, sort_keys=False, indent=4, separators=(',', ': ')))
+
         # check if teacher is loaded
         if self.training_type == "distillation" and not self.alg.policy.loaded_teacher:
             raise ValueError("Teacher model parameters not loaded. Please load a teacher model to distill.")
@@ -200,9 +210,15 @@ class OnPolicyRunner:
                     # Sample actions
                     actions = self.alg.act(obs, privileged_obs)
                     # Step the environment
-                    obs, privileged_obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
+                    obs, privileged_obs, rewards, dones, infos, \
+                        _, _ = self.env.step(actions.to(self.env.device))
                     # Move to device
-                    obs, privileged_obs, rewards, dones = (obs.to(self.device), privileged_obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    obs, privileged_obs, rewards, dones = (
+                        obs.to(self.device),
+                        privileged_obs.to(self.device),
+                        rewards.to(self.device),
+                        dones.to(self.device),
+                    )
                     # perform normalization
                     obs = self.obs_normalizer(obs)
 
@@ -410,7 +426,7 @@ class OnPolicyRunner:
             self.writer.save_model(path, self.current_learning_iteration)
 
     def load(self, path: str, load_optimizer: bool = True):
-        loaded_dict = torch.load(path, weights_only=False)
+        loaded_dict = torch.load(path, weights_only=False, map_location=self.device)
         # -- Load model
         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
         # -- Load RND model if used

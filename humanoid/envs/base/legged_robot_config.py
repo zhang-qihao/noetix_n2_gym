@@ -3,7 +3,9 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 235
+        frame_stack = None
+        num_single_obs = 235
+        num_observations = int(num_single_obs) if frame_stack is None else num_single_obs * frame_stack
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
@@ -12,7 +14,7 @@ class LeggedRobotCfg(BaseConfig):
         test = False
 
         enable_early_termination = False
-        termination_height = 0.5
+        termination_height = 0.4
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
@@ -24,7 +26,7 @@ class LeggedRobotCfg(BaseConfig):
         dynamic_friction = 1.0
         restitution = 0.
         # rough terrain only:
-        measure_heights = True
+        measure_heights = False
         measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
         selected = False # select a unique terrain type and pass all arguments
@@ -43,7 +45,7 @@ class LeggedRobotCfg(BaseConfig):
         curriculum = False
         max_curriculum = 1.
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
-        resampling_time = 10. # time before command are changed[s]
+        resampling_time = [2, 6] # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
         min_cmd_vel = 0.3
         class ranges:
@@ -119,7 +121,11 @@ class LeggedRobotCfg(BaseConfig):
         push_interval_s = 15
         max_push_vel_xy = 1.
 
-        dynamic_randomization = 0.0 
+        disturbance = False
+        push_force_range = [50.0, 300.0]
+        push_torque_range = [25.0, 100.0]
+        disturbance_probabilities = 0.002
+        disturbance_interval = [20, 50] # * dt * decimation ms
 
 
     class rewards:
@@ -127,8 +133,8 @@ class LeggedRobotCfg(BaseConfig):
             termination = -0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.05
+            lin_vel_z = 0.0
+            ang_vel_xy = 0.0
             orientation = 0.
             torques = -0.
             dof_vel = -0.
@@ -142,10 +148,7 @@ class LeggedRobotCfg(BaseConfig):
             energy_cost = -0.
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
-        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         max_contact_force = 100. # forces above this value are penalized
-        target_feet_height = 0.05
-        cycle_time = 0.64
 
     class normalization:
         class obs_scales:
@@ -188,14 +191,14 @@ class LeggedRobotCfg(BaseConfig):
             num_velocity_iterations = 0
             contact_offset = 0.01  # [m]
             rest_offset = 0.0   # [m]
-            bounce_threshold_velocity = 0.5 #0.5 [m/s]
+            bounce_threshold_velocity = 0.1 # [m]
             max_depenetration_velocity = 1.0
             max_gpu_contact_pairs = 2**23 #2**24 -> needed for 8000 envs and more
             default_buffer_size_multiplier = 5
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 class LeggedRobotCfgPPO(BaseConfig):
-    seed = 1
+    seed = 5
     runner_class_name = 'OnPolicyRunner'
     class policy:
         init_noise_std = 1.0

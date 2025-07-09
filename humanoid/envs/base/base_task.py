@@ -1,7 +1,6 @@
 import sys
 from isaacgym import gymapi
 from isaacgym import gymutil
-import numpy as np
 import torch
 
 # Base class for RL tasks
@@ -106,8 +105,9 @@ class BaseTask():
     def reset(self):
         """ Reset all robots"""
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        obs, privileged_obs, _, _, _ = self.step(torch.zeros(
+        res = self.step(torch.zeros(
             self.num_envs, self.num_actions, device=self.device, requires_grad=False))
+        obs, privileged_obs = res[0], res[1]
         return obs, privileged_obs
 
     def step(self, actions):

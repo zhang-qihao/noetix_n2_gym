@@ -6,6 +6,7 @@ import random
 from typing import Union
 from isaacgym import gymapi
 from isaacgym import gymutil
+import torch.nn.functional as F
 
 from humanoid import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
 
@@ -198,6 +199,9 @@ class _TorchPolicyExporter(torch.nn.Module):
             self.register_buffer("cell_state", torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size))
             self.forward = self.forward_lstm
             self.reset = self.reset_memory
+        if hasattr(actor_critic, 'estimator'):
+            self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
+            self.forward = self.forward_him
         # copy normalizer if exists
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
@@ -211,6 +215,12 @@ class _TorchPolicyExporter(torch.nn.Module):
         self.cell_state[:] = c
         x = x.squeeze(0)
         return self.actor(x)
+    
+    def forward_him(self, obs_history):
+        parts = self.estimator(obs_history)
+        vel, z = parts[..., :3], parts[..., 3:]
+        z = F.normalize(z, dim=-1, p=2.0)
+        return self.actor(torch.cat((obs_history, vel, z), dim=1))
 
     def forward(self, x):
         return self.actor(self.normalizer(x))
@@ -230,7 +240,6 @@ class _TorchPolicyExporter(torch.nn.Module):
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
 
-
 class _OnnxPolicyExporter(torch.nn.Module):
     """Exporter of actor-critic into ONNX file."""
 
@@ -240,20 +249,31 @@ class _OnnxPolicyExporter(torch.nn.Module):
         self.actor = copy.deepcopy(actor_critic.actor)
         self.is_recurrent = actor_critic.is_recurrent
         if self.is_recurrent:
-            self.rnn = copy.deepcopy(actor_critic.memory_a.rnn)
+            self.embodied = copy.deepcopy(actor_critic.embodied)
+            self.rnn = copy.deepcopy(actor_critic.dwl_model.encoder.rnn)
             self.rnn.cpu()
             self.forward = self.forward_lstm
+        if hasattr(actor_critic, 'estimator'):
+            self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
+            self.forward = self.forward_him
         # copy normalizer if exists
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
         else:
             self.normalizer = torch.nn.Identity()
-
+    
     def forward_lstm(self, x_in, h_in, c_in):
         x_in = self.normalizer(x_in)
         x, (h, c) = self.rnn(x_in.unsqueeze(0), (h_in, c_in))
         x = x.squeeze(0)
-        return self.actor(x), h, c
+        actor_input = self.embodied(x)
+        return self.actor(actor_input), h, c
+    
+    def forward_him(self, obs_history):
+        parts = self.estimator(obs_history)
+        vel, z = parts[..., :3], parts[..., 3:]
+        z = F.normalize(z, dim=-1, p=2.0)
+        return self.actor(torch.cat((obs_history[:, -63:], vel, z), dim=1))
 
     def forward(self, x):
         return self.actor(self.normalizer(x))
@@ -264,7 +284,7 @@ class _OnnxPolicyExporter(torch.nn.Module):
             obs = torch.zeros(1, self.rnn.input_size)
             h_in = torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size)
             c_in = torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size)
-            actions, h_out, c_out = self(obs, h_in, c_in)
+            actions, h_out, cout = self(obs, h_in, c_in)
             torch.onnx.export(
                 self,
                 (obs, h_in, c_in),
@@ -274,6 +294,19 @@ class _OnnxPolicyExporter(torch.nn.Module):
                 verbose=self.verbose,
                 input_names=["policy_input", "h_in", "c_in"],
                 output_names=["policy_output", "h_out", "c_out"],
+                dynamic_axes={},
+            )
+        elif hasattr(self, 'estimator'):
+            obs = torch.zeros(1, self.estimator[0].in_features)
+            torch.onnx.export(
+                self,
+                obs,
+                os.path.join(path, filename),
+                export_params=True,
+                opset_version=11,
+                verbose=self.verbose,
+                input_names=["policy_input"],
+                output_names=["policy_output"],
                 dynamic_axes={},
             )
         else:
@@ -290,4 +323,3 @@ class _OnnxPolicyExporter(torch.nn.Module):
                 dynamic_axes={},
             )
 
-    

@@ -82,7 +82,6 @@ def unpad_trajectories(trajectories, masks):
         .transpose(1, 0)
     )
 
-
 def store_code_state(logdir, repositories) -> list:
     git_log_dir = os.path.join(logdir, "git")
     os.makedirs(git_log_dir, exist_ok=True)

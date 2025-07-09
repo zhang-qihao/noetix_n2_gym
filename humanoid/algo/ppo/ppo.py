@@ -77,9 +77,9 @@ class PPO:
                 print("Symmetry not used for learning. We will use it for logging instead.")
             # If function is a string then resolve it to a function
             if isinstance(symmetry_cfg["data_augmentation_func"], str):
-                symmetry_cfg["data_augmentation_func"] = string_to_callable(symmetry_cfg["data_augmentation_func"])
+                self.data_augmentation_func = string_to_callable(symmetry_cfg["data_augmentation_func"])
             # Check valid configuration
-            if symmetry_cfg["use_data_augmentation"] and not callable(symmetry_cfg["data_augmentation_func"]):
+            if symmetry_cfg["use_data_augmentation"] and not callable(self.data_augmentation_func):
                 raise ValueError(
                     "Data augmentation enabled but the function is not callable:"
                     f" {symmetry_cfg['data_augmentation_func']}"
@@ -233,13 +233,11 @@ class PPO:
 
             # Perform symmetric augmentation
             if self.symmetry and self.symmetry["use_data_augmentation"]:
-                # augmentation using symmetry
-                data_augmentation_func = self.symmetry["data_augmentation_func"]
                 # returned shape: [batch_size * num_aug, ...]
-                obs_batch, actions_batch = data_augmentation_func(
+                obs_batch, actions_batch = self.data_augmentation_func(
                     obs=obs_batch, actions=actions_batch, env=self.symmetry["_env"], obs_type="policy"
                 )
-                critic_obs_batch, _ = data_augmentation_func(
+                critic_obs_batch, _ = self.data_augmentation_func(
                     obs=critic_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="critic"
                 )
                 # compute number of augmentations per sample
@@ -325,32 +323,28 @@ class PPO:
 
             # Symmetry loss
             if self.symmetry:
-                # obtain the symmetric actions
+                # obtain the origin actions
+                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
                 # if we did augmentation before then we don't need to augment again
                 if not self.symmetry["use_data_augmentation"]:
-                    data_augmentation_func = self.symmetry["data_augmentation_func"]
-                    obs_batch, _ = data_augmentation_func(
+                    symm_obs_batch, _ = self.data_augmentation_func(
                         obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
                     )
                     # compute number of augmentations per sample
                     num_aug = int(obs_batch.shape[0] / original_batch_size)
 
                 # actions predicted by the actor for symmetrically-augmented observations
-                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
+                actions_mean_symm_batch = self.policy.act_inference(symm_obs_batch.detach().clone())
 
                 # compute the symmetrically augmented actions
-                # note: we are assuming the first augmentation is the original one.
-                #   We do not use the action_batch from earlier since that action was sampled from the distribution.
-                #   However, the symmetry loss is computed using the mean of the distribution.
-                action_mean_orig = mean_actions_batch[:original_batch_size]
-                _, actions_mean_symm_batch = data_augmentation_func(
-                    obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
+                _, actions_mean_symm_batch = self.data_augmentation_func(
+                    obs=None, actions=actions_mean_symm_batch, env=self.symmetry["_env"], obs_type="policy"
                 )
 
-                # compute the loss (we skip the first augmentation as it is the original one)
+                # compute the loss 
                 mse_loss = torch.nn.MSELoss()
                 symmetry_loss = mse_loss(
-                    mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
+                    mean_actions_batch, actions_mean_symm_batch.detach()
                 )
                 # add the loss to the total loss
                 if self.symmetry["use_mirror_loss"]:
@@ -384,6 +378,7 @@ class PPO:
             # -- For PPO
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
+
             # -- For RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
