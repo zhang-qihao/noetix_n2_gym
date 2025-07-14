@@ -273,7 +273,7 @@ class _OnnxPolicyExporter(torch.nn.Module):
         parts = self.estimator(obs_history)
         vel, z = parts[..., :3], parts[..., 3:]
         z = F.normalize(z, dim=-1, p=2.0)
-        return self.actor(torch.cat((obs_history[:, -63:], vel, z), dim=1))
+        return self.actor(torch.cat((obs_history[:, -62:], vel, z), dim=1))
 
     def forward(self, x):
         return self.actor(self.normalizer(x))

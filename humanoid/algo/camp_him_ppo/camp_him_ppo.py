@@ -15,11 +15,25 @@ from humanoid.algo.ppo.rnd import RandomNetworkDistillation
 from humanoid.algo.amp_him_ppo.him_rollout_storage import HIMRolloutStorage
 from humanoid.algo.amp_him_ppo.him_actor_critic import HIMActorCritic
 from humanoid.utils.utils import string_to_callable
-from humanoid.amp_utils.discriminator import Discriminator
-from humanoid.amp_utils.replay_buffer import ReplayBuffer
+from humanoid.amp_utils.cdiscriminator import CDiscriminator as Discriminator
+from humanoid.csi_utils.csi_replay_buffer import CSIReplayBuffer as ReplayBuffer
 
+def batch_random_replace_one_hot(one_hot_tensor, device):
+    n, m = one_hot_tensor.shape
+    # Retrieve the indices of the current one-hot tensor
+    current_indices = torch.argmax(one_hot_tensor, dim=1)
+    
+    # Generate indices that are different from the current indices
+    random_offsets = torch.randint(1, m, (n,), device=device)
+    new_indices = (current_indices + random_offsets) % m
+    
+    # Convert the new indices to new one-hot tensor
+    new_one_hot_tensor = torch.zeros_like(one_hot_tensor, device=device)
+    new_one_hot_tensor[torch.arange(n, device=device), new_indices] = 1
 
-class AMP_HIM_PPO:
+    return new_one_hot_tensor.float()
+
+class CAMP_HIM_PPO:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
     policy: HIMActorCritic
@@ -133,7 +147,7 @@ class AMP_HIM_PPO:
         # Discriminator components
         self.discriminator = discriminator
         self.discriminator.to(self.device)
-        self.amp_policy_data = ReplayBuffer(discriminator.observation_dim, discriminator.observation_horizon, amp_replay_buffer_size, device)
+        self.amp_policy_data = ReplayBuffer(discriminator.observation_dim, discriminator.observation_horizon, amp_expert_data.num_motions, amp_replay_buffer_size, device)
         self.amp_expert_data = amp_expert_data
         self.amp_state_normalizer = amp_state_normalizer
         self.amp_style_reward_normalizer = amp_style_reward_normalizer
@@ -183,7 +197,7 @@ class AMP_HIM_PPO:
         self.transition.privileged_observations = critic_obs
         return self.transition.actions
 
-    def process_env_step(self, rewards, dones, infos, next_critic_obs, amp_observation_buf):
+    def process_env_step(self, rewards, dones, infos, next_critic_obs, amp_observation_buf, motions):
         # Record the next critic obs
         self.transition.next_privileged_observations = next_critic_obs.clone()
         # Record the rewards and dones
@@ -211,7 +225,7 @@ class AMP_HIM_PPO:
 
         # record the transition
         self.storage.add_transitions(self.transition)
-        self.amp_policy_data.insert(amp_observation_buf)
+        self.amp_policy_data.insert(amp_observation_buf, motions)
         self.transition.clear()
         self.policy.reset(dones)
 
@@ -222,7 +236,7 @@ class AMP_HIM_PPO:
             last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )
 
-    def update(self):  # noqa: C901
+    def update(self):
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
@@ -369,7 +383,7 @@ class AMP_HIM_PPO:
             estimation_loss, swap_loss = self.policy.estimator.update(obs_batch, critic_obs_batch, next_critic_obs_batch, lr=self.learning_rate)
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-            
+
             # Symmetry loss
             if self.symmetry and self.symmetry["use_mirror_loss"]:
                 # obtain the origin actions
@@ -459,8 +473,15 @@ class AMP_HIM_PPO:
             self.storage.num_envs * self.storage.num_transitions_per_env // self.discriminator_num_mini_batches)
 
         # Disceiminator update
-        for sample_amp_policy, sample_expert_data in zip(amp_policy_generator, amp_expert_generator):
-            sample_amp_expert, _ = sample_expert_data[0], sample_expert_data[1]
+        for sample_policy_data, sample_expert_data in zip(amp_policy_generator, amp_expert_generator):
+            sample_amp_policy, sample_policy_labels = sample_policy_data[0], sample_policy_data[1]
+            sample_amp_expert, sample_expert_labels = sample_expert_data[0], sample_expert_data[1]
+            mismatched_labels = batch_random_replace_one_hot(sample_expert_labels, device=self.device)
+
+            sample_policy_labels.requires_grad = True
+            sample_expert_labels.requires_grad = True
+            mismatched_labels.requires_grad = True
+
             # Discriminator loss
             policy_state_buf = torch.zeros_like(sample_amp_policy)
             expert_state_buf = torch.zeros_like(sample_amp_expert)
@@ -475,28 +496,32 @@ class AMP_HIM_PPO:
             policy_data.requires_grad = True
             expert_data.requires_grad = True
 
-            policy_d = self.discriminator(policy_state_buf.flatten(1, 2))
-            expert_d = self.discriminator(expert_state_buf.flatten(1, 2))
+            policy_d, policy_a = self.discriminator(policy_data, sample_policy_labels)
+            expert_d, expert_a = self.discriminator(expert_data, sample_expert_labels)
+
+            policy_labels = torch.argmax(sample_policy_labels, dim=1)
+            expert_labels = torch.argmax(sample_expert_labels, dim=1)
 
             if self.discriminator_loss_function == "BCEWithLogitsLoss":
-                expert_loss = torch.nn.BCEWithLogitsLoss()(expert_d, torch.ones_like(expert_d))
-                policy_loss = torch.nn.BCEWithLogitsLoss()(policy_d, torch.zeros_like(policy_d))
-                grad_pen_loss = self.discriminator.compute_grad_pen(expert_data,
-                                                                lambda_=self.discriminator_gradient_penalty_coef)
+                policy_loss = 0.5 * (torch.nn.BCEWithLogitsLoss()(policy_d, torch.zeros_like(policy_d)) + torch.nn.CrossEntropyLoss()(policy_a, policy_labels))
+                expert_loss = 0.5 * (torch.nn.BCEWithLogitsLoss()(expert_d, torch.ones_like(expert_d)) + torch.nn.CrossEntropyLoss()(expert_a, expert_labels))
             elif self.discriminator_loss_function == "MSELoss":
-                expert_loss = torch.nn.MSELoss()(expert_d, torch.ones(expert_d.size(), device=self.device))
-                policy_loss = torch.nn.MSELoss()(policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
-                grad_pen_loss = self.discriminator.compute_grad_pen(expert_data,
-                                                                lambda_=self.discriminator_gradient_penalty_coef)
+                expert_loss = 0.5 * (torch.nn.MSELoss()(expert_d, torch.ones(expert_d.size(), device=self.device)) + torch.nn.CrossEntropyLoss()(expert_a, expert_labels))
+                policy_loss = 0.5 * (torch.nn.MSELoss()(policy_d, -1 * torch.ones(policy_d.size(), device=self.device)) + torch.nn.CrossEntropyLoss()(policy_a, policy_labels))
             elif self.discriminator_loss_function == "WassersteinLoss":
-                expert_loss = -expert_d.mean()
-                policy_loss = policy_d.mean()
-                
-                grad_pen_loss = self.discriminator.compute_wgan_div_grad_pen(expert_data, policy_data)
+                expert_loss = 0.5 * (-expert_d.mean() + torch.nn.CrossEntropyLoss()(expert_a, expert_labels))
+                policy_loss = 0.5 * (policy_d.mean() + torch.nn.CrossEntropyLoss()(policy_a, policy_labels))
             else:
                 raise ValueError("Unexpected loss function specified")
-            
+
             amp_loss = 0.5 * (expert_loss + policy_loss)
+
+            # Gradient Penalty Loss
+            grad_pen_loss = self.discriminator.compute_grad_pen(expert_data, sample_expert_labels, lambda_=self.discriminator_gradient_penalty_coef) 
+            # grad_pen_loss = self.discriminator.compute_div_grad_pen(expert_data, sample_expert_labels, policy_data, sample_policy_labels)
+
+            # Condiction Aware Loss
+            ca_loss = self.discriminator.compute_ca_loss(expert_data, mismatched_labels)
 
             # logit reg
             disc_logit_loss = self.discriminator.compute_logit_reg(lambda_=self.discriminator_logit_reg_coef)
@@ -505,7 +530,7 @@ class AMP_HIM_PPO:
             weight_decay_loss = self.discriminator.compute_weight_decay(lambda_ = self.discriminator_weight_decay_coef)
             
             # Gradient step
-            discriminator_loss = amp_loss + grad_pen_loss + disc_logit_loss + weight_decay_loss
+            discriminator_loss = amp_loss + grad_pen_loss + ca_loss + disc_logit_loss + weight_decay_loss
 
             self.discriminator_optimizer.zero_grad()
             discriminator_loss.backward()

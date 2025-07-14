@@ -60,7 +60,7 @@ def play(args):
         env.update_keyboard_events()
         actions = policy(obs.detach())
         obs = env.step(actions.detach())[0]
-        print(env.base_lin_vel, env.commands)
+        # print(env.base_lin_vel, env.commands)
 
 if __name__ == '__main__':
     EXPORT_POLICY = True

@@ -12,17 +12,17 @@ from itertools import chain
 
 
 from humanoid.algo.ppo.rnd import RandomNetworkDistillation
-from humanoid.algo.amp_him_ppo.him_rollout_storage import HIMRolloutStorage
-from humanoid.algo.amp_him_ppo.him_actor_critic import HIMActorCritic
+from humanoid.algo.distillation.him_rollout_storage import HIMRolloutStorage
+from humanoid.algo.distillation.him_moe_actor_critic import HIMMOEActorCritic
 from humanoid.utils.utils import string_to_callable
 from humanoid.amp_utils.discriminator import Discriminator
 from humanoid.amp_utils.replay_buffer import ReplayBuffer
 
 
-class AMP_HIM_PPO:
+class AMP_HIM_MOE_PPO:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: HIMActorCritic
+    policy: HIMMOEActorCritic
     discriminator: Discriminator
     """The actor critic module."""
 
@@ -74,6 +74,9 @@ class AMP_HIM_PPO:
             self.gpu_global_rank = 0
             self.gpu_world_size = 1
 
+        self.load_balance_coef = 0.01 
+        self.diversity_coef = 0.01     
+
         # RND components
         if rnd_cfg is not None:
             # Create RND module
@@ -88,7 +91,7 @@ class AMP_HIM_PPO:
         # Symmetry components
         if symmetry_cfg is not None:
             # Check if symmetry is enabled
-            use_symmetry = symmetry_cfg["use_mirror_loss"]
+            use_symmetry = symmetry_cfg["use_data_augmentation"] or symmetry_cfg["use_mirror_loss"]
             # Print that we are not using symmetry
             if not use_symmetry:
                 print("Symmetry not used for learning. We will use it for logging instead.")
@@ -174,7 +177,7 @@ class AMP_HIM_PPO:
     def act(self, obs, critic_obs):
         # compute the actions and values
         self.transition.actions = self.policy.act(obs).detach()
-        self.transition.values = self.policy.evaluate(critic_obs).detach()
+        self.transition.values = self.policy.evaluate(critic_obs,obs).detach()
         self.transition.actions_log_prob = self.policy.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.policy.action_mean.detach()
         self.transition.action_sigma = self.policy.action_std.detach()
@@ -215,9 +218,9 @@ class AMP_HIM_PPO:
         self.transition.clear()
         self.policy.reset(dones)
 
-    def compute_returns(self, last_critic_obs):
+    def compute_returns(self, last_critic_obs,last_obs):
         # compute value for the last step
-        last_values = self.policy.evaluate(last_critic_obs).detach()
+        last_values = self.policy.evaluate(last_critic_obs,last_obs).detach()
         self.storage.compute_returns(
             last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )
@@ -228,6 +231,8 @@ class AMP_HIM_PPO:
         mean_entropy = 0
         mean_estimate_loss = 0
         mean_swap_loss = 0
+        mean_load_balance_loss = 0
+        mean_diversity_loss = 0
 
         mean_discriminator_loss = 0
         mean_policy_pred = 0
@@ -238,7 +243,7 @@ class AMP_HIM_PPO:
         else:
             mean_rnd_loss = None
         # -- Symmetry loss
-        if self.symmetry and self.symmetry["use_mirror_loss"]:
+        if self.symmetry:
             mean_symmetry_loss = 0
         else:
             mean_symmetry_loss = None
@@ -295,6 +300,7 @@ class AMP_HIM_PPO:
                 target_values_batch = target_values_batch.repeat(num_aug, 1)
                 advantages_batch = advantages_batch.repeat(num_aug, 1)
                 returns_batch = returns_batch.repeat(num_aug, 1)
+                
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
@@ -302,7 +308,7 @@ class AMP_HIM_PPO:
             self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
             # -- critic
-            value_batch = self.policy.evaluate(critic_obs_batch)
+            value_batch = self.policy.evaluate(critic_obs_batch,obs_batch)
             # -- entropy
             # we only keep the entropy of the first augmentation (the original one)
             mu_batch = self.policy.action_mean[:original_batch_size]
@@ -368,10 +374,20 @@ class AMP_HIM_PPO:
             # Estimator Update
             estimation_loss, swap_loss = self.policy.estimator.update(obs_batch, critic_obs_batch, next_critic_obs_batch, lr=self.learning_rate)
 
-            loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-            
+            # moe loss
+            task_embed = self.policy.task_embedding(obs_batch)
+            gate_weights = self.policy.shared_gate_network(task_embed)
+            load_balance_loss = self.policy.moe_loss.compute_load_balance_loss(gate_weights)
+            diversity_loss = self.policy.moe_loss.compute_diversity_loss(gate_weights)
+    
+            expert_usage = gate_weights.mean(dim=0)
+            print(f"Expert usage: {expert_usage}")
+
+            loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean() + \
+                load_balance_loss *self.load_balance_coef + diversity_loss * self.diversity_coef
+
             # Symmetry loss
-            if self.symmetry and self.symmetry["use_mirror_loss"]:
+            if self.symmetry:
                 # obtain the origin actions
                 mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
                 # if we did augmentation before then we don't need to augment again
@@ -389,7 +405,7 @@ class AMP_HIM_PPO:
                 actions_mean_symm_batch = self.policy.act_inference(symm_obs_batch.detach().clone())
 
                 # values predicted by the critic for symmetrically-augmented privileged observations
-                values_symm_batch = self.policy.evaluate(symm_critic_obs_batch.detach().clone())
+                values_symm_batch = self.policy.evaluate(symm_critic_obs_batch.detach().clone(),symm_obs_batch.detach().clone())
 
                 # compute the symmetrically augmented actions
                 _, actions_mean_symm_batch = self.data_augmentation_func(
@@ -443,6 +459,8 @@ class AMP_HIM_PPO:
             mean_entropy += entropy_batch.mean().item()
             mean_estimate_loss += estimation_loss
             mean_swap_loss += swap_loss
+            mean_load_balance_loss += load_balance_loss.item()
+            mean_diversity_loss += diversity_loss.item()
             # -- RND loss
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
@@ -537,6 +555,9 @@ class AMP_HIM_PPO:
         # -- For Symmetry
         if mean_symmetry_loss is not None:
             mean_symmetry_loss /= num_updates
+        # moe loss
+        mean_load_balance_loss /= num_updates
+        mean_diversity_loss /= num_updates
         # -- Clear the storage
         self.storage.clear()
 
@@ -549,11 +570,13 @@ class AMP_HIM_PPO:
             "swap": mean_swap_loss,
             "amp_loss": mean_discriminator_loss,
             "expert_pred": mean_expert_pred,
-            "policy_pred": mean_policy_pred
+            "policy_pred": mean_policy_pred,
+            "load_balance_loss": mean_load_balance_loss,
+            "diversity_loss": mean_diversity_loss,
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
-        if self.symmetry and self.symmetry["use_mirror_loss"]:
+        if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
 
         return loss_dict

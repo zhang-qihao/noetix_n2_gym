@@ -1078,6 +1078,10 @@ class LeggedRobot(BaseTask):
         return torch.sum(torch.square(
             self.actions + self.last_last_actions - 2 * self.last_actions), dim=1)
     
+    def _reward_action_rate(self):
+        # Penalize changes in actions
+        return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+    
     def _reward_collision(self):
         # Penalize collisions on selected bodies
         return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 5), dim=1)

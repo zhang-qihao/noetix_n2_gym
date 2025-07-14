@@ -8,7 +8,6 @@ from humanoid.utils.terrain import  HumanoidTerrain
 from humanoid.utils.keyboard_controller import KeyBoardController, KeyboardAction, Delta, Switch
 
 from humanoid.utils.isaacgym_utils import get_euler_xyz_tensor
-from humanoid.amp_utils.motion_loader import MotionLoaderNing
 from humanoid.csi_utils.csi_discriminator import CSIDiscriminator
 
 class N2CSIEnv(N2AMPEnv):
@@ -56,7 +55,7 @@ class N2CSIEnv(N2AMPEnv):
                                 self.dof_vel * self.obs_scales.dof_vel,
                                 self.actions
                             ),dim=-1)
-        
+
         self.privileged_obs_buf = torch.cat((  
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,  
@@ -197,12 +196,12 @@ class N2CSIEnv(N2AMPEnv):
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
-        
+
         # fix reset gravity bug
         self.base_quat[env_ids] = self.root_states[env_ids, 3:7]
         self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
         self.projected_gravity[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.gravity_vec[env_ids])
-    
+
     def _resample_motion_commands(self, env_ids):
         random_motions = torch.randint(low=0, high=self.num_skill_labels, size=(len(env_ids),), dtype=torch.long, device=self.device)
         self.motion_commands[env_ids] = F.one_hot(random_motions, num_classes=self.num_skill_labels).float()

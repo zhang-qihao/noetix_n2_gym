@@ -21,12 +21,12 @@ from humanoid.algo import VecEnv
 from humanoid.utils.normalizer import Normalizer
 from humanoid.utils.utils import store_code_state
 
-from humanoid.algo.amp_him_ppo.amp_him_ppo import AMP_HIM_PPO
-from humanoid.amp_utils.discriminator import Discriminator
+from humanoid.algo.camp_him_ppo.camp_him_ppo import CAMP_HIM_PPO
+from humanoid.amp_utils.cdiscriminator import CDiscriminator as Discriminator
 from humanoid.amp_utils.motion_loader import *
 
 
-class AMPHIMOnPolicyRunner:
+class CAMPHIMOnPolicyRunner:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
@@ -41,7 +41,7 @@ class AMPHIMOnPolicyRunner:
         self._configure_multi_gpu()
 
         # resolve training type depending on the algorithm
-        if self.alg_cfg["class_name"] == "AMP_HIM_PPO":
+        if self.alg_cfg["class_name"] == "CAMP_HIM_PPO":
             self.training_type = "rl"
         elif self.alg_cfg["class_name"] == "Distillation":
             self.training_type = "distillation"
@@ -79,6 +79,7 @@ class AMPHIMOnPolicyRunner:
         self.discriminator = Discriminator(
             observation_dim=self.env.motion_loader.observation_dim,
             observation_horizon=self.env.reference_observation_horizon,
+            num_motions=amp_expert_data.num_motions,
             device=self.device,
             **self.discriminator_cfg).to(self.device)
 
@@ -109,7 +110,7 @@ class AMPHIMOnPolicyRunner:
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
-        self.alg: AMP_HIM_PPO | Distillation = alg_class(policy, self.discriminator, amp_expert_data, 
+        self.alg: CAMP_HIM_PPO | Distillation = alg_class(policy, self.discriminator, amp_expert_data, 
                                                          self.amp_state_normalizer, self.amp_style_reward_normalizer, 
                                                          device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
         
@@ -199,6 +200,7 @@ class AMPHIMOnPolicyRunner:
 
         # start learning
         obs = self.env.get_observations()
+        motions = self.env.motions.clone()
         privileged_obs = self.env.get_privileged_observations()
         amp_observation_buf = self.env.get_amp_observation_buf()
         obs, privileged_obs, amp_observation_buf = obs.to(self.device), privileged_obs.to(self.device), amp_observation_buf.to(self.device)
@@ -239,11 +241,13 @@ class AMPHIMOnPolicyRunner:
                     obs, privileged_obs, rewards, dones, infos, termination_ids, \
                         termination_privileged_obs, terminal_amp_states = self.env.step(actions.to(self.env.device))
                     next_amp_obs = self.env.get_amp_observations()
+                    motions = self.env.motions.clone()
                     # Move to device
-                    obs, privileged_obs, next_amp_obs, rewards, dones = (
+                    obs, privileged_obs, next_amp_obs, motions, rewards, dones = (
                         obs.to(self.device),
                         privileged_obs.to(self.device),
                         next_amp_obs.to(self.device),
+                        motions.to(self.device),
                         rewards.to(self.device),
                         dones.to(self.device),
                     )
@@ -263,7 +267,7 @@ class AMPHIMOnPolicyRunner:
                     amp_observation_buf_with_term[termination_ids] = terminal_amp_states
 
                     # process the step
-                    self.alg.process_env_step(rewards, dones, infos, next_privileged_obs, amp_observation_buf_with_term)
+                    self.alg.process_env_step(rewards, dones, infos, next_privileged_obs, amp_observation_buf_with_term, motions)
 
                     # update reset amp_observation_buf
                     amp_observation_buf[termination_ids] = self.env.get_amp_observation_buf()[termination_ids, :]

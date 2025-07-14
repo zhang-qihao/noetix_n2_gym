@@ -13,20 +13,22 @@ import json
 from collections import deque
 
 import humanoid
-from humanoid.algo.ppo.distillation import Distillation 
+from humanoid.algo.distillation.distillation import Distillation 
 from humanoid.algo.ppo.normalizer import EmpiricalNormalization
-from humanoid.algo.amp_him_ppo.him_actor_critic import HIMActorCritic
+from humanoid.algo.distillation.him_dl_actor_critic import HIMDLActorCritic
+from humanoid.algo.distillation.him_moe_actor_critic import HIMMOEActorCritic
 
 from humanoid.algo import VecEnv
 from humanoid.utils.normalizer import Normalizer
 from humanoid.utils.utils import store_code_state
 
-from humanoid.algo.amp_him_ppo.amp_him_ppo import AMP_HIM_PPO
 from humanoid.amp_utils.discriminator import Discriminator
 from humanoid.amp_utils.motion_loader import *
+from humanoid.algo.distillation.amp_him_dl_ppo import AMP_HIM_DL_PPO
+from humanoid.algo.distillation.amp_him_moe_ppo import AMP_HIM_MOE_PPO
+from humanoid.algo.distillation.student_teacher import StudentTeacher
 
-
-class AMPHIMOnPolicyRunner:
+class AMPHIMDLOnPolicyRunner:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
@@ -39,12 +41,15 @@ class AMPHIMOnPolicyRunner:
 
         # check if multi-gpu is enabled
         self._configure_multi_gpu()
-
+        self.moe_flag = False
         # resolve training type depending on the algorithm
-        if self.alg_cfg["class_name"] == "AMP_HIM_PPO":
+        if self.alg_cfg["class_name"] == "AMP_HIM_DL_PPO":
             self.training_type = "rl"
         elif self.alg_cfg["class_name"] == "Distillation":
             self.training_type = "distillation"
+        elif self.alg_cfg["class_name"] == "AMP_HIM_MOE_PPO":
+            self.moe_flag = True
+            self.training_type = "rl"
         else:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
 
@@ -56,11 +61,9 @@ class AMPHIMOnPolicyRunner:
         # resolve type of privileged observations
         if self.training_type == "rl":
             self.privileged_obs_type = "critic"
-        # if self.training_type == "distillation":
-        #     if "teacher" in extras["observations"]:
-        #         self.privileged_obs_type = "teacher"  # policy distillation
-        #     else:
-        #         self.privileged_obs_type = None
+        if self.training_type == "distillation":
+            self.privileged_obs_type = "teacher"  # policy distillation
+            
 
         # resolve dimensions of privileged observations
         if self.privileged_obs_type is not None:
@@ -85,9 +88,21 @@ class AMPHIMOnPolicyRunner:
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
         self.policy_cfg["num_one_step_obs"] = self.env.num_single_obs
-        policy: HIMActorCritic = policy_class(
-            num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
-        ).to(self.device)
+        if (self.training_type == "rl") & (not self.moe_flag): 
+            policy: HIMDLActorCritic = policy_class(
+                num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
+            ).to(self.device)
+        elif self.moe_flag:
+            policy: HIMMOEActorCritic = policy_class(
+                num_obs,  # num_obs = c_frame*self.env.num_single_obs 5*70=350
+                num_privileged_obs,  # 150
+                self.env.num_actions,
+                **self.policy_cfg).to(self.device)
+        elif self.training_type == "distillation":
+            policy: StudentTeacher = policy_class(num_student_obs=num_obs, #num_obs = c_frame*self.env.num_single_obs 5*70=350
+                                                    num_teacher_obs=num_privileged_obs,#150
+                                                    num_actions=self.env.num_actions,
+                                                    **self.policy_cfg).to(self.device)
 
         # # resolve dimension of rnd gated state
         # if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
@@ -109,14 +124,35 @@ class AMPHIMOnPolicyRunner:
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
-        self.alg: AMP_HIM_PPO | Distillation = alg_class(policy, self.discriminator, amp_expert_data, 
+        if self.training_type == "rl":
+            init_noise_std = self.policy_cfg["init_noise_std_rl"]
+        elif self.training_type == "distillation":
+            init_noise_std = self.policy_cfg["init_noise_std_st"]
+        else:
+            raise ValueError(f"Unknown training type: {self.training_type}. Supported types are: rl, distillation")
+        self.policy_cfg["init_noise_std"] = init_noise_std
+        # self.alg: AMP_HIM_DL_PPO | Distillation = alg_class(policy, self.discriminator, amp_expert_data, 
+        #                                                  self.amp_state_normalizer, self.amp_style_reward_normalizer, 
+        #                                                  device=self.device,**self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        if self.training_type == "distillation": 
+            self.alg:Distillation = alg_class(policy, num_learning_epochs=5,
+                                                         device=self.device, multi_gpu_cfg=self.multi_gpu_cfg)
+        elif self.moe_flag:
+            self.alg:AMP_HIM_MOE_PPO = alg_class(policy, self.discriminator, amp_expert_data, 
                                                          self.amp_state_normalizer, self.amp_style_reward_normalizer, 
-                                                         device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
-        
-        self.env.discriminator = self.discriminator
-        self.env.amp_state_normalizer = self.amp_state_normalizer
-        self.env.amp_style_reward_normalizer = self.amp_style_reward_normalizer
-        self.env.estimator = self.alg.policy.estimator
+                                                         device=self.device,**self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+            self.env.discriminator = self.discriminator
+            self.env.amp_state_normalizer = self.amp_state_normalizer
+            self.env.amp_style_reward_normalizer = self.amp_style_reward_normalizer
+            self.env.estimator = self.alg.policy.estimator
+        elif self.training_type == "rl":
+            self.alg:AMP_HIM_DL_PPO = alg_class(policy, self.discriminator, amp_expert_data, 
+                                                         self.amp_state_normalizer, self.amp_style_reward_normalizer, 
+                                                         device=self.device,**self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+            self.env.discriminator = self.discriminator
+            self.env.amp_state_normalizer = self.amp_state_normalizer
+            self.env.amp_style_reward_normalizer = self.amp_style_reward_normalizer
+            self.env.estimator = self.alg.policy.estimator
 
         # store training configuration
         self.num_steps_per_env = self.cfg["runner"]["num_steps_per_env"]
@@ -224,7 +260,7 @@ class AMPHIMOnPolicyRunner:
             self.alg.broadcast_parameters()
             # TODO: Do we need to synchronize empirical normalizers?
             #   Right now: No, because they all should converge to the same values "asymptotically".
-
+    
         # Start training
         start_iter = self.current_learning_iteration
         tot_iter = start_iter + num_learning_iterations
@@ -255,18 +291,20 @@ class AMPHIMOnPolicyRunner:
                     next_privileged_obs = privileged_obs.clone().detach()
                     next_privileged_obs[termination_ids] = termination_privileged_obs.clone().detach()
 
-                    # update amp observation buffer
-                    amp_observation_buf[:, :-1] = amp_observation_buf[:, 1:].clone()
-                    amp_observation_buf[:, -1] = next_amp_obs.clone()
-                    # Account for terminal states.
-                    amp_observation_buf_with_term = torch.clone(amp_observation_buf)
-                    amp_observation_buf_with_term[termination_ids] = terminal_amp_states
-
-                    # process the step
-                    self.alg.process_env_step(rewards, dones, infos, next_privileged_obs, amp_observation_buf_with_term)
-
-                    # update reset amp_observation_buf
-                    amp_observation_buf[termination_ids] = self.env.get_amp_observation_buf()[termination_ids, :]
+                    if self.training_type == "rl":
+                        # update amp observation buffer
+                        amp_observation_buf[:, :-1] = amp_observation_buf[:, 1:].clone()
+                        amp_observation_buf[:, -1] = next_amp_obs.clone()
+                        # Account for terminal states.
+                        amp_observation_buf_with_term = torch.clone(amp_observation_buf)
+                        amp_observation_buf_with_term[termination_ids] = terminal_amp_states
+                        # process the step
+                        self.alg.process_env_step(rewards, dones, infos, next_privileged_obs, amp_observation_buf_with_term)
+                        amp_observation_buf[termination_ids] = self.env.get_amp_observation_buf()[termination_ids, :]
+                    elif self.training_type == "distillation":
+                        self.alg.process_env_step(rewards, dones, infos)
+                    
+                    
 
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd else None
@@ -305,9 +343,11 @@ class AMPHIMOnPolicyRunner:
                 start = stop
 
                 # compute returns
-                if self.training_type == "rl":
+                if self.moe_flag:
+                    self.alg.compute_returns(privileged_obs,obs)
+                elif self.training_type == "rl":
                     self.alg.compute_returns(privileged_obs)
-
+                
             # update policy
             loss_dict = self.alg.update()
 
@@ -446,14 +486,25 @@ class AMPHIMOnPolicyRunner:
 
     def save(self, path: str, infos=None):
         # -- Save model
-        saved_dict = {
-            "model_state_dict": self.alg.policy.state_dict(),
-            "actor_state_dict": self.alg.policy.actor.state_dict(),
-            "estimator_state_dict": self.alg.policy.estimator.state_dict(),
-            "optimizer_state_dict": self.alg.optimizer.state_dict(),
-            "iter": self.current_learning_iteration,
-            "infos": infos,
-        }
+        if self.training_type == "rl":
+            saved_dict = {
+                "model_state_dict": self.alg.policy.state_dict(),
+                "actor_state_dict": self.alg.policy.actor.state_dict(),
+                "estimator_state_dict": self.alg.policy.estimator.state_dict(),
+                "optimizer_state_dict": self.alg.optimizer.state_dict(),
+                "iter": self.current_learning_iteration,
+                "infos": infos,
+            }
+        elif self.training_type == "distillation":
+            saved_dict = {
+                "model_state_dict": self.alg.policy.state_dict(),
+                "estimator_state_dict": self.alg.policy.estimator.state_dict(),
+                "optimizer_state_dict": self.alg.optimizer.state_dict(),
+                "iter": self.current_learning_iteration,
+                "infos": infos,
+            }
+        else:
+            raise ValueError(f"Unknown training type: {self.training_type}. Supported types are: rl, distillation")
         # -- Save RND model if used
         if self.alg.rnd:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
@@ -474,7 +525,16 @@ class AMPHIMOnPolicyRunner:
         loaded_dict = torch.load(path, weights_only=False, map_location=self.device)
         # -- Load model
         # resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
-        resumed_training = self.alg.policy.actor.load_state_dict(loaded_dict["actor_state_dict"])
+        if self.training_type == "distillation":
+            resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+            resumed_estimator_training = self.alg.policy.estimator.load_state_dict(loaded_dict["estimator_state_dict"])
+            self.alg.policy.estimator.eval()
+        elif self.moe_flag:
+            resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+            resumed_training = self.alg.policy.actor.load_state_dict(loaded_dict["actor_state_dict"])
+            resumed_training = self.alg.policy.estimator.load_state_dict(loaded_dict["estimator_state_dict"])
+        else:
+            resumed_training = self.alg.policy.actor.load_state_dict(loaded_dict["actor_state_dict"])
         if resumed_training: resumed_training = self.alg.policy.estimator.load_state_dict(loaded_dict["estimator_state_dict"])
         # -- Load RND model if used
         if self.alg.rnd:

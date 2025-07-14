@@ -65,9 +65,9 @@ class N2AMPEnv(N2Env):
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
         # dynamic randomization
-        if not self.cfg.env.test:
-            delay = torch.rand((self.num_envs, 1), device=self.device)
-            actions = (1 - delay) * actions + delay * self.actions
+        # if not self.cfg.env.test:
+        delay = torch.rand((self.num_envs, 1), device=self.device)
+        actions = (1 - delay) * actions + delay * self.actions
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
@@ -138,6 +138,7 @@ class N2AMPEnv(N2Env):
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+        self.last_contacts[:] = self.contacts[:]
 
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
             self._draw_debug_vis()

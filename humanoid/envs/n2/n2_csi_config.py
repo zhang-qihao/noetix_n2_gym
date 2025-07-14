@@ -43,7 +43,7 @@ class N2CSICfg(LeggedRobotCfg):
         # reference_setting
         reference_state_initialization = True
         prob_rsi = 1.0
-    
+
     class domain_rand(LeggedRobotCfg.domain_rand):
         randomize_gains = True
         p_gain_range = [0.8, 1.2]
@@ -103,7 +103,7 @@ class N2CSICfg(LeggedRobotCfg):
         flip_visual_attachments = False
         replace_cylinder_with_capsule = False
         fix_base_link = False
- 
+
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'plane' # plane trimesh
         curriculum = False
@@ -159,27 +159,6 @@ class N2CSICfg(LeggedRobotCfg):
         resampling_time = [2, 8]  # time before command are changed[s]
         class ranges(): 
             None
-
-    class sim(LeggedRobotCfg.sim):
-        dt = 0.001  # 1000 Hz
-        substeps = 1  # 2
-        up_axis = 1  # 0 is y, 1 is z
-
-        class physx(LeggedRobotCfg.sim.physx):
-            num_threads = 10
-            solver_type = 0  # 0: pgs, 1: tgs
-            num_position_iterations = 4
-            num_velocity_iterations = 0
-            contact_offset = 0.01  # [m]
-            rest_offset = 0.0   # [m]
-            bounce_threshold_velocity = 0.1  # [m/s]
-            max_depenetration_velocity = 1.0
-            max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
-            default_buffer_size_multiplier = 5
-            # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
-            contact_collection = 2
-
-
 
 
 

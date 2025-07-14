@@ -72,7 +72,7 @@ class DWL_PPO:
         # Symmetry components
         if symmetry_cfg is not None:
             # Check if symmetry is enabled
-            use_symmetry = symmetry_cfg["use_data_augmentation"] or symmetry_cfg["use_mirror_loss"]
+            use_symmetry = symmetry_cfg["use_mirror_loss"]
             # Print that we are not using symmetry
             if not use_symmetry:
                 print("Symmetry not used for learning. We will use it for logging instead.")
@@ -196,7 +196,7 @@ class DWL_PPO:
         else:
             mean_rnd_loss = None
         # -- Symmetry loss
-        if self.symmetry:
+        if self.symmetry and self.symmetry["use_mirror_loss"]:
             mean_symmetry_loss = 0
         else:
             mean_symmetry_loss = None
@@ -330,7 +330,7 @@ class DWL_PPO:
             loss = denoise_loss + surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
             # Symmetry loss
-            if self.symmetry:
+            if self.symmetry and self.symmetry["use_mirror_loss"]:
                 # obtain the origin actions
                 # mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
                 # if we did augmentation before then we don't need to augment again
@@ -432,7 +432,7 @@ class DWL_PPO:
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
-        if self.symmetry:
+        if self.symmetry and self.symmetry["use_mirror_loss"]:
             loss_dict["symmetry"] = mean_symmetry_loss
 
         return loss_dict

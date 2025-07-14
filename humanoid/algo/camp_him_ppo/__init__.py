@@ -29,10 +29,4 @@
 #
 # Copyright (c) 2024 Beijing RobotEra TECHNOLOGY CO.,LTD. All rights reserved.
 
-
-from .vec_env import VecEnv
-
-from .ppo import *
-from .dwl_ppo import *
-from .amp_him_ppo import *
-from .camp_him_ppo import *
+from .camp_him_on_policy_runner import CAMPHIMOnPolicyRunner
