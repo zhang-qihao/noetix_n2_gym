@@ -774,33 +774,79 @@ class N2JumpingEnv(N2AMPEnv):
         rew[env_ids] = torch.exp(-torch.norm(root_acc[env_ids], dim=1) * 3)
         return rew
     
-    def _reward_landing_buffer(self):
+    # def _reward_landing_buffer(self):
+    #     phase = self._get_phase()
+    #     rew = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+    #     # env_ids = torch.logical_and(self.has_jumped, torch.logical_and(phase > 0.75, phase < 0.9))
+    #     env_ids = torch.logical_and(self.has_jumped, phase < 0.8)
+    #     # print(self.root_states[:, 2], torch.norm(self.base_euler_xyz[:, :2], dim=1), phase)
+    #     if torch.all(env_ids == False): # if no env is done return 0 reward for all
+    #         return rew
+    #     # target_height = 0.65 # + (self.landing_velocity[env_ids] / 10) 
+    #     # height_err = (self.root_states[env_ids, 2] - self.terrain_h - target_height)
+    #     # rew[env_ids] = torch.exp(-torch.square(height_err) * 50)
+    #     rew[env_ids] = -self.base_lin_vel[env_ids, 2].clone().clamp(min=-0.5, max=0.0)
+    #     return rew
+    
+    # def _reward_jump_up(self):
+    #     rew = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+
+    #     root_h = self.root_states[:, 2]
+    #     root_h_error_jump = torch.sqrt(torch.square(0.85 - root_h))
+    #     root_h_error_loc = torch.sqrt(torch.square(0.70 - root_h))
+    #     jump_goal = (root_h_error_jump < 0.1) & self.jump_toggle
+    #     rew[jump_goal] += self.cfg.rewards.jump_goal
+    #     self.jump_toggle[jump_goal] = 0
+
+    #     root_h_error_rwd_jump = torch.exp(-torch.square(root_h_error_jump) * 50)
+    #     root_h_error_rwd_loc = torch.exp(-torch.square(root_h_error_loc) * 50)
+
+    #     rew[self.jump_toggle] += root_h_error_rwd_jump[self.jump_toggle]
+    #     rew[~self.jump_toggle] += root_h_error_rwd_loc[~self.jump_toggle]
+    #     return rew
+
+    def _reward_ang_vel_z(self):
         phase = self._get_phase()
-        rew = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
-        # env_ids = torch.logical_and(self.has_jumped, torch.logical_and(phase > 0.75, phase < 0.9))
-        env_ids = torch.logical_and(self.has_jumped, phase < 0.8)
-        # print(self.root_states[:, 2], torch.norm(self.base_euler_xyz[:, :2], dim=1), phase)
-        if torch.all(env_ids == False): # if no env is done return 0 reward for all
-            return rew
-        # target_height = 0.65 # + (self.landing_velocity[env_ids] / 10) 
-        # height_err = (self.root_states[env_ids, 2] - self.terrain_h - target_height)
-        # rew[env_ids] = torch.exp(-torch.square(height_err) * 50)
-        rew[env_ids] = -self.base_lin_vel[env_ids, 2].clone().clamp(min=-0.5, max=0.0)
+        mask = torch.logical_and(torch.logical_and(phase > 0.5, phase < 0.65), ~self.has_jumped)
+        mask = torch.logical_and(mask, self.mid_air)
+        return self.base_ang_vel[:, 2].clone().clamp(min=0, max=3) * mask
+    
+    def _reward_default_joint_pos_twist(self):
+        joint_diff = self.dof_pos - self.default_dof_pos
+
+        left_yaw_roll = joint_diff[:, self.left_yaw_roll]
+        right_yaw_roll = joint_diff[:, self.right_yaw_roll]
+
+        yaw_roll = torch.norm(left_yaw_roll, dim=1) + torch.norm(right_yaw_roll, dim=1)
+        yaw_roll = torch.clamp(yaw_roll - 0.1, 0, 50)
+
+        rew = torch.exp(-yaw_roll * 100) - 0.05 * torch.norm(joint_diff[:, self.left_yaw_roll + self.right_yaw_roll], dim=1)
+        phase = self._get_phase()
+        mask = torch.logical_and(torch.logical_and(phase > 0.4, phase < 0.65), ~self.has_jumped)
+        rew[mask] = 1.0
         return rew
     
-    def _reward_jump_up(self):
-        rew = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+    def _reward_joint_pos_symmetry_twist(self):
+        diff = torch.square(self.actions[:, 0] - self.actions[:, 9])
+        diff += torch.square(self.actions[:, 1:3] + self.actions[:, 10:12]).sum(dim=-1)
+        diff += torch.square(self.actions[:, 3] - self.actions[:, 12])
+        diff += torch.square(self.actions[:, 4:6] + self.actions[:, 13:15]).sum(dim=-1)
+        diff += torch.square(self.actions[:, 6:9] - self.actions[:, 15:18]).sum(dim=-1)
 
-        root_h = self.root_states[:, 2]
-        root_h_error_jump = torch.sqrt(torch.square(0.85 - root_h))
-        root_h_error_loc = torch.sqrt(torch.square(0.70 - root_h))
-        jump_goal = (root_h_error_jump < 0.1) & self.jump_toggle
-        rew[jump_goal] += self.cfg.rewards.jump_goal
-        self.jump_toggle[jump_goal] = 0
-
-        root_h_error_rwd_jump = torch.exp(-torch.square(root_h_error_jump) * 50)
-        root_h_error_rwd_loc = torch.exp(-torch.square(root_h_error_loc) * 50)
-
-        rew[self.jump_toggle] += root_h_error_rwd_jump[self.jump_toggle]
-        rew[~self.jump_toggle] += root_h_error_rwd_loc[~self.jump_toggle]
-        return rew
+        phase = self._get_phase()
+        mask = torch.logical_and(torch.logical_and(phase > 0.4, phase < 0.65), ~self.has_jumped)
+        diff[mask] = 0.0
+        return diff
+    
+    def _reward_foot_orientation(self):        
+        foot_quat_1 = self.feet_quat[:, 0, :]
+        foot_quat_2 = self.feet_quat[:, 1, :]
+        lfoot_pitch = get_euler_xyz(foot_quat_1)[1]
+        rfoot_pitch = get_euler_xyz(foot_quat_2)[1]
+        lfoot_pitch[lfoot_pitch > torch.pi] -= 2*torch.pi
+        lfoot_pitch[lfoot_pitch < -torch.pi] += 2*torch.pi
+        rfoot_pitch[rfoot_pitch > torch.pi] -= 2*torch.pi
+        rfoot_pitch[rfoot_pitch < -torch.pi] += 2*torch.pi
+        feet_orient = torch.cat((lfoot_pitch.unsqueeze(1), rfoot_pitch.unsqueeze(1)), dim=-1)
+        return torch.exp(-torch.norm(feet_orient, dim=1) * 20)
+    

@@ -62,6 +62,7 @@ class N2Env(LeggedRobot):
         self.rigid_body_states_view = self.rigid_body_states.view(self.num_envs, -1, 13)
         self.feet_state = self.rigid_body_states_view[:, self.feet_indices, :]
         self.feet_pos = self.feet_state[:, :, :3]
+        self.feet_quat = self.feet_state[:, :, 3:7]
         self.feet_vel = self.feet_state[:, :, 7:10]
         self.last_feet_vel = self.feet_vel.clone()
         
@@ -74,6 +75,7 @@ class N2Env(LeggedRobot):
         
         self.feet_state = self.rigid_body_states_view[:, self.feet_indices, :]
         self.feet_pos = self.feet_state[:, :, :3]
+        self.feet_quat = self.feet_state[:, :, 3:7]
         self.last_feet_vel = self.feet_vel.clone()
         self.feet_vel = self.feet_state[:, :, 7:10]
         

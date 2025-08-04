@@ -13,7 +13,7 @@ import torch
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 10)
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 5)
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**10
     env_cfg.terrain.mesh_type = 'plane' # plane trimesh
     env_cfg.terrain.num_rows = 20
@@ -30,6 +30,7 @@ def play(args):
     env_cfg.domain_rand.disturbance_probabilities = 0.005
     env_cfg.domain_rand.push_force_range = [50.0, 500.0]
     env_cfg.domain_rand.push_torque_range = [0.0, 0.0]
+    env_cfg.env.episode_length_s = 100
 
     env_cfg.env.test = True
 
@@ -64,7 +65,7 @@ def play(args):
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
-    CONTROL_ROBOT = True
+    CONTROL_ROBOT = False
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     args = get_args()

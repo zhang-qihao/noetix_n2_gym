@@ -23,6 +23,10 @@ task_registry.register( "n2_18dof_amp", N2AMPEnv, N2_18DofAMPCfg(), N2_18DofAMPC
 task_registry.register( "n2_20dof_amp", N2AMPEnv, N2_20DofAMPCfg(), N2_20DofAMPCfgPPO() )
 task_registry.register( "n2_jumping", N2JumpingEnv, N2JumpingCfg(), NingAMPJumpingCfgPPO() )
 
+# ---------------------------------------------- Mimic ----------------------------------------------
+from .n2.n2_mimic_env import N2MimicEnv
+from .n2.n2_mimic_config import N2MimicCfg, N2MimicCfgPPO
+task_registry.register( "n2_mimic", N2MimicEnv, N2MimicCfg(), N2MimicCfgPPO() )
 
 
 

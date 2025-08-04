@@ -23,6 +23,7 @@ class HIMActorCritic(nn.Module):
         num_one_step_obs,
         actor_hidden_dims=[256, 256, 256],
         critic_hidden_dims=[256, 256, 256],
+        critic_output_dim = 1,
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
@@ -41,7 +42,6 @@ class HIMActorCritic(nn.Module):
         self.num_actions = num_actions
         self.num_one_step_obs = num_one_step_obs
 
-        # mlp_input_dim_a = num_actor_obs + 3 + 16
         mlp_input_dim_a = num_one_step_obs + 3 + 16
         mlp_input_dim_c = num_critic_obs
 
@@ -66,7 +66,7 @@ class HIMActorCritic(nn.Module):
         critic_layers.append(activation)
         for layer_index in range(len(critic_hidden_dims)):
             if layer_index == len(critic_hidden_dims) - 1:
-                critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], 1))
+                critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], critic_output_dim))
             else:
                 critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], critic_hidden_dims[layer_index + 1]))
                 critic_layers.append(activation)
@@ -119,7 +119,6 @@ class HIMActorCritic(nn.Module):
     def update_distribution(self, observations):
         with torch.no_grad():
             vel, latent = self.estimator(observations)
-        # actor_input = torch.cat((observations, vel, latent), dim=-1)
         actor_input = torch.cat((observations[:, -self.num_one_step_obs:], vel, latent), dim=-1)
         # compute mean
         mean = self.actor(actor_input)
@@ -142,7 +141,6 @@ class HIMActorCritic(nn.Module):
 
     def act_inference(self, observations):
         vel, latent = self.estimator(observations)
-        # actions_mean = self.actor(torch.cat((observations, vel, latent), dim=-1))
         actions_mean = self.actor(torch.cat((observations[:, -self.num_one_step_obs:], vel, latent), dim=-1))
         return actions_mean
 

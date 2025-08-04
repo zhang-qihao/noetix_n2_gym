@@ -36,3 +36,4 @@ from .ppo import *
 from .dwl_ppo import *
 from .amp_him_ppo import *
 from .camp_him_ppo import *
+from .mh_ppo import *

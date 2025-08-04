@@ -226,6 +226,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         empirical_normalization = False
         num_steps_per_env = 24 # per iteration
         max_iterations = 1500 # number of policy updates
+        init_at_random_ep_len = False
 
         # logging
         save_interval = 100 # check for potential saves every this many iterations

@@ -45,16 +45,16 @@ class N2JumpingCfg(N2_18DofAMPCfg):
         randomize_base_mass = True
         added_mass_range = [-5., 5.]
 
-        disturbance = False
+        disturbance = True
         push_force_range = [50.0, 300.0]
         push_torque_range = [25.0, 100.0]
         disturbance_probabilities = 0.002
         disturbance_interval = [10, 25] # * dt * decimation ms
 
     class terrain(N2_18DofAMPCfg.terrain):
-        mesh_type = 'plane' # plane trimesh
+        mesh_type = 'trimesh' # plane trimesh
         # plane; obstacles; uniform; slope_up; slope_down, stair_up, stair_down
-        terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.0, 0.0, 0.0, 0.50, 0.50, 0.0, 0.0]
         restitution = 0.
 
     class commands:
@@ -102,24 +102,31 @@ class N2JumpingCfg(N2_18DofAMPCfg):
             # stage 1 reward_coef = 20 reward_lerp = 0.8
             task_max_height = 0.0 # Reward for maximum height (minus minimum height) achieved
             lin_vel_z = 15.0
+            # feet_height = 50.0
+            
             stand_still = -0.5
-            orientation = 0.5
-            feet_height = 50.0
+            orientation = 1.0
+
+            ang_vel_z = 10.0
+            default_joint_pos_twist = 1.0
+            joint_pos_symmetry_twist = -0.02
+            foot_orientation = 0.5
+
+
             # jump_up = 1.2
 
             # stage 2 reward_coef = 50 reward_lerp = 0.5
             # task_max_height = 2000.0 # Reward for maximum height (minus minimum height) achieved
-            # lin_vel_z = 100.0
             change_of_contact = 0.5
             base_acc = 0.0
             # landing_buffer = 50.0
 
             jumping = 0.0
             tracking_lin_vel = 1.2
-            tracking_ang_vel = 0.8
+            tracking_ang_vel = 0.0
 
-            joint_pos_symmetry = -0.02
-            default_joint_pos = 1.0
+            joint_pos_symmetry = -0.0
+            # default_joint_pos = 1.0
 
             # ---------- Regularisation rewards ----------- #
             # energy
@@ -158,7 +165,7 @@ class N2JumpingCfg(N2_18DofAMPCfg):
 class NingAMPJumpingCfgPPO(N2_18DofAMPCfgPPO):
     runner_class_name = "CAMPHIMOnPolicyRunner"
     class discriminator:
-        reward_coef = 50
+        reward_coef = 20
         reward_lerp = 0.8   # reward = (1 - reward_lerp) * style_reward + reward_lerp * task_reward
         style_reward_function = "quad_mapping" # log_mapping, quad_mapping, wasserstein_mapping
         normalize_style_reward = False
@@ -166,7 +173,7 @@ class NingAMPJumpingCfgPPO(N2_18DofAMPCfgPPO):
 
     class algorithm(N2_18DofAMPCfgPPO.algorithm):
         class_name = "CAMP_HIM_PPO" 
-        entropy_coef = 0.01
+        entropy_coef = 0.005
 
         # AMP setting 
         discriminator_learning_rate = 1e-5
