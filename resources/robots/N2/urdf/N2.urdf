@@ -86,7 +86,7 @@
   </link>
   <joint
     name="L_arm_shoulder_pitch_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0.003069 0.16731 0.17743"
       rpy="-1.3963 0 0" />
@@ -100,7 +100,7 @@
       lower="-2.7"
       upper="2.7"
       effort="27"
-      velocity="10" />
+      velocity="10" /> 
   </joint>
   <link
     name="L_arm_shoulder_roll_Link">
@@ -144,7 +144,7 @@
   </link>
   <joint
     name="L_arm_shoulder_roll_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0 0 0"
       rpy="1.3963 0 0" />
@@ -260,7 +260,7 @@
   </link>
   <joint
     name="L_arm_elbow_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />
@@ -371,7 +371,7 @@
   </link>
   <joint
     name="R_arm_shoulder_pitch_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0.003069 -0.16721 0.17835"
       rpy="1.3963 0 0" />
@@ -429,7 +429,7 @@
   </link>
   <joint
     name="R_arm_shoulder_roll_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0 0 0"
       rpy="-1.3963 0 0" />
@@ -487,14 +487,14 @@
   </link>
   <joint
     name="R_arm_shoulder_yaw_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0 -0.030576 0"
       rpy="0 0 0" />
     <parent
       link="R_arm_shoulder_roll_Link" />
     <child
-      link="R_arm_shoulder_yaw_Link" />
+      link="R_arm_shoulder_yaw_Link" /> 
     <axis
       xyz="0 0 1" />
     <limit
@@ -545,7 +545,7 @@
   </link>
   <joint
     name="R_arm_elbow_joint"
-    type="revolute">
+    type="revolute"> 
     <origin
       xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />

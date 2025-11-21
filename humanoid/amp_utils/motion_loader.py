@@ -6,8 +6,7 @@ from pybullet_utils import transformations
 
 _EPS = 1e-6
 
-from humanoid.amp_utils import pose3d
-from humanoid.amp_utils import motion_util
+
 
 def quaternion_slerp(q0, q1, fraction, spin=0, shortestpath=True):
     """Batch quaternion spherical linear interpolation."""
@@ -121,8 +120,6 @@ class MotionLoaderNing:
                 # Normalize and standardize quaternions.
                 for f_i in range(motion_data.shape[0]):
                     root_rot = MotionLoaderNing.get_root_rot(motion_data[f_i])
-                    root_rot = pose3d.QuaternionNormalize(root_rot)
-                    root_rot = motion_util.standardize_quaternion(root_rot)
                     motion_data[
                         f_i,
                         MotionLoaderNing.POS_SIZE:
@@ -306,9 +303,6 @@ class MotionLoaderNing:
         blend_root_pos = self.slerp(root_pos0, root_pos1, blend)
         blend_root_rot = transformations.quaternion_slerp(
             root_rot0.cpu().numpy(), root_rot1.cpu().numpy(), blend)
-        blend_root_rot = torch.tensor(
-            motion_util.standardize_quaternion(blend_root_rot),
-            dtype=torch.float32, device=self.device)
         blend_joints = self.slerp(joints0, joints1, blend)
         blend_tar_toe_pos = self.slerp(tar_toe_pos_0, tar_toe_pos_1, blend)
         blend_linear_vel = self.slerp(linear_vel_0, linear_vel_1, blend)
@@ -459,8 +453,6 @@ class MotionLoaderNing10DOF:
                 # Normalize and standardize quaternions.
                 for f_i in range(motion_data.shape[0]):
                     root_rot = MotionLoaderNing10DOF.get_root_rot(motion_data[f_i])
-                    root_rot = pose3d.QuaternionNormalize(root_rot)
-                    root_rot = motion_util.standardize_quaternion(root_rot)
                     motion_data[
                         f_i,
                         MotionLoaderNing10DOF.POS_SIZE:
@@ -645,9 +637,6 @@ class MotionLoaderNing10DOF:
         blend_root_pos = self.slerp(root_pos0, root_pos1, blend)
         blend_root_rot = transformations.quaternion_slerp(
             root_rot0.cpu().numpy(), root_rot1.cpu().numpy(), blend)
-        blend_root_rot = torch.tensor(
-            motion_util.standardize_quaternion(blend_root_rot),
-            dtype=torch.float32, device=self.device)
         blend_joints = self.slerp(joints0, joints1, blend)
         blend_tar_toe_pos = self.slerp(tar_toe_pos_0, tar_toe_pos_1, blend)
         blend_linear_vel = self.slerp(linear_vel_0, linear_vel_1, blend)
@@ -796,8 +785,6 @@ class MotionLoaderNing20DOF:
                 # Normalize and standardize quaternions.
                 for f_i in range(motion_data.shape[0]):
                     root_rot = MotionLoaderNing20DOF.get_root_rot(motion_data[f_i])
-                    root_rot = pose3d.QuaternionNormalize(root_rot)
-                    root_rot = motion_util.standardize_quaternion(root_rot)
                     motion_data[
                         f_i,
                         MotionLoaderNing20DOF.POS_SIZE:
@@ -1132,8 +1119,6 @@ class MotionLoaderNingTracking:
                 # Normalize and standardize quaternions.
                 for f_i in range(motion_data.shape[0]):
                     root_rot = MotionLoaderNingTracking.get_root_rot(motion_data[f_i])
-                    root_rot = pose3d.QuaternionNormalize(root_rot)
-                    root_rot = motion_util.standardize_quaternion(root_rot)
                     motion_data[
                         f_i,
                         MotionLoaderNingTracking.POS_SIZE:
@@ -1317,9 +1302,6 @@ class MotionLoaderNingTracking:
         blend_root_pos = self.slerp(root_pos0, root_pos1, blend)
         blend_root_rot = transformations.quaternion_slerp(
             root_rot0.cpu().numpy(), root_rot1.cpu().numpy(), blend)
-        blend_root_rot = torch.tensor(
-            motion_util.standardize_quaternion(blend_root_rot),
-            dtype=torch.float32, device=self.device)
         blend_joints = self.slerp(joints0, joints1, blend)
         blend_tar_toe_pos = self.slerp(tar_toe_pos_0, tar_toe_pos_1, blend)
         blend_linear_vel = self.slerp(linear_vel_0, linear_vel_1, blend)

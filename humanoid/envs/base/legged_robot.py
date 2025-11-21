@@ -19,7 +19,6 @@ from humanoid.utils.terrain import  HumanoidTerrain
 from humanoid.utils.math import wrap_to_pi, quat_apply_yaw
 from humanoid.utils.isaacgym_utils import get_euler_xyz_tensor
 from humanoid.utils.helpers import class_to_dict
-from humanoid.utils.keyboard_controller import KeyBoardController, KeyboardAction, Delta, Switch
 from .legged_robot_config import LeggedRobotCfg
 
 class LeggedRobot(BaseTask):
@@ -50,8 +49,8 @@ class LeggedRobot(BaseTask):
         if not self.headless:
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
             # set up keyboard control (additional to default QUIT and VIEW keys)
-            self.keyboard_controller = KeyBoardController(self, self._get_keyboard_events())
-            self.keyboard_controller.print_options()
+            # self.keyboard_controller = KeyBoardController(self, self._get_keyboard_events())
+            # self.keyboard_controller.print_options()
 
         self.init_done = True
 
@@ -417,28 +416,28 @@ class LeggedRobot(BaseTask):
         # set small commands to zero
         self.commands[env_ids, :3] *= (torch.norm(self.commands[env_ids, :3], dim=1) > self.min_cmd_vel).unsqueeze(1)
     
-    def _get_keyboard_events(self):
-        """Simple keyboard controller for linear and angular velocity."""
+    # def _get_keyboard_events(self):
+    #     """Simple keyboard controller for linear and angular velocity."""
 
-        def print_command():
-            print("[LeggedRobot]: Environment 0 command: ", self.commands_des[0])
-            self.commands[:, :3] = self.commands_des[:, :3] * (torch.abs(self.commands_des[:, :3]) > self.min_cmd_vel)
-            print(self.commands[0])
+    #     def print_command():
+    #         print("[LeggedRobot]: Environment 0 command: ", self.commands_des[0])
+    #         self.commands[:, :3] = self.commands_des[:, :3] * (torch.abs(self.commands_des[:, :3]) > self.min_cmd_vel)
+    #         print(self.commands[0])
         
-        def print_reset():
-            print("[LeggedRobot]: Environment reset")
-            self.reset()
+    #     def print_reset():
+    #         print("[LeggedRobot]: Environment reset")
+    #         self.reset()
 
-        key_board_events = {
-            "w": Delta("lin_vel_x", amount=0.1, variable_reference=self.commands_des[:, 0], callback=print_command),
-            "s": Delta("lin_vel_x", amount=-0.1, variable_reference=self.commands_des[:, 0], callback=print_command),
-            "a": Delta("lin_vel_y", amount=0.1, variable_reference=self.commands_des[:, 1], callback=print_command),
-            "d": Delta("lin_vel_y", amount=-0.1, variable_reference=self.commands_des[:, 1], callback=print_command),
-            "q": Delta("ang_vel_z", amount=0.1, variable_reference=self.commands_des[:, 2], callback=print_command),
-            "e": Delta("ang_vel_z", amount=-0.1, variable_reference=self.commands_des[:, 2], callback=print_command),
-            "r": Switch("Reset", True, False, variable_reference=self.reset_toggle, callback=print_reset)
-        }
-        return key_board_events
+    #     key_board_events = {
+    #         "w": Delta("lin_vel_x", amount=0.1, variable_reference=self.commands_des[:, 0], callback=print_command),
+    #         "s": Delta("lin_vel_x", amount=-0.1, variable_reference=self.commands_des[:, 0], callback=print_command),
+    #         "a": Delta("lin_vel_y", amount=0.1, variable_reference=self.commands_des[:, 1], callback=print_command),
+    #         "d": Delta("lin_vel_y", amount=-0.1, variable_reference=self.commands_des[:, 1], callback=print_command),
+    #         "q": Delta("ang_vel_z", amount=0.1, variable_reference=self.commands_des[:, 2], callback=print_command),
+    #         "e": Delta("ang_vel_z", amount=-0.1, variable_reference=self.commands_des[:, 2], callback=print_command),
+    #         "r": Switch("Reset", True, False, variable_reference=self.reset_toggle, callback=print_reset)
+    #     }
+    #     return key_board_events
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -690,8 +689,11 @@ class LeggedRobot(BaseTask):
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        print(self.dof_names)
+        print(self.cfg.control.stiffness.keys())
         for i in range(self.num_dofs):
             name = self.dof_names[i]
+
             self.default_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
             found = False
             for dof_name in self.cfg.control.stiffness.keys():

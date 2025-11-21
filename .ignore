@@ -1,0 +1,14 @@
+*.pyc
+__pycache__/
+logs/
+outputs/
+checkpoints/
+runs/
+*.pth
+*.pt
+*.ckpt
+.cache/
+torch_extensions/
+IsaacGym_Preview_4_Package*/
+build/
+*.egg-info

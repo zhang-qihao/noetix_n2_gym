@@ -86,7 +86,7 @@
   </link>
   <joint
     name="L_arm_shoulder_pitch_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0.003069 0.16731 0.17743"
       rpy="-1.3963 0 0" />
@@ -94,13 +94,15 @@
       link="base_link" />
     <child
       link="L_arm_shoulder_pitch_Link" />
+    <!--
     <axis
       xyz="0 0 1" />
     <limit
       lower="-2.7"
       upper="2.7"
       effort="27"
-      velocity="10" />
+      velocity="10" /> 
+    -->
   </joint>
   <link
     name="L_arm_shoulder_roll_Link">
@@ -144,21 +146,23 @@
   </link>
   <joint
     name="L_arm_shoulder_roll_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0 0 0"
-      rpy="1.5963 0 0" />
+      rpy="1.6963 0 0" />
     <parent
       link="L_arm_shoulder_pitch_Link" />
     <child
       link="L_arm_shoulder_roll_Link" />
     <axis
       xyz="1 0 0" />
+    <!--
     <limit
       lower="0"
       upper="2.1"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="L_arm_shoulder_yaw_Link">
@@ -169,12 +173,12 @@
       <mass
         value="0.62854" />
       <inertia
-        ixx="0.00025606"
+        ixx="0.01"
         ixy="-7.1141E-08"
         ixz="1.0035E-06"
-        iyy="0.00034723"
+        iyy="0.01"
         iyz="-8.1583E-07"
-        izz="0.00022463" />
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -202,7 +206,7 @@
   </link>
   <joint
     name="L_arm_shoulder_yaw_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0 0.030484 0"
       rpy="0 0 0" />
@@ -210,6 +214,7 @@
       link="L_arm_shoulder_roll_Link" />
     <child
       link="L_arm_shoulder_yaw_Link" />
+    <!--
     <axis
       xyz="0 0 1" />
     <limit
@@ -217,6 +222,7 @@
       upper="2.7"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="L_arm_elbow_Link">
@@ -260,7 +266,7 @@
   </link>
   <joint
     name="L_arm_elbow_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />
@@ -268,6 +274,7 @@
       link="L_arm_shoulder_yaw_Link" />
     <child
       link="L_arm_elbow_Link" />
+    <!--
     <axis
       xyz="0 1 0" />
     <limit
@@ -275,6 +282,7 @@
       upper="1"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="L_arm_hand_Link">
@@ -371,7 +379,7 @@
   </link>
   <joint
     name="R_arm_shoulder_pitch_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0.003069 -0.16721 0.17835"
       rpy="1.3963 0 0" />
@@ -379,6 +387,7 @@
       link="base_link" />
     <child
       link="R_arm_shoulder_pitch_Link" />
+    <!--
     <axis
       xyz="0 0 -1" />
     <limit
@@ -386,6 +395,7 @@
       upper="2.7"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="R_arm_shoulder_roll_Link">
@@ -429,21 +439,23 @@
   </link>
   <joint
     name="R_arm_shoulder_roll_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0 0 0"
-      rpy="-1.5963 0 0" />
+      rpy="-1.6963 0 0" />
     <parent
       link="R_arm_shoulder_pitch_Link" />
     <child
       link="R_arm_shoulder_roll_Link" />
     <axis
       xyz="1 0 0" />
+    <!--
     <limit
       lower="-2.1"
       upper="0"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="R_arm_shoulder_yaw_Link">
@@ -454,12 +466,12 @@
       <mass
         value="0.62854" />
       <inertia
-        ixx="0.00025606"
+        ixx="0.01"
         ixy="7.1141E-08"
         ixz="1.0035E-06"
-        iyy="0.00034723"
+        iyy="0.01"
         iyz="8.1583E-07"
-        izz="0.00022463" />
+        izz="0.01" />
     </inertial>
     <visual>
       <origin
@@ -487,7 +499,7 @@
   </link>
   <joint
     name="R_arm_shoulder_yaw_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0 -0.030576 0"
       rpy="0 0 0" />
@@ -495,6 +507,7 @@
       link="R_arm_shoulder_roll_Link" />
     <child
       link="R_arm_shoulder_yaw_Link" />
+    <!--
     <axis
       xyz="0 0 1" />
     <limit
@@ -502,6 +515,7 @@
       upper="2.7"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="R_arm_elbow_Link">
@@ -545,7 +559,7 @@
   </link>
   <joint
     name="R_arm_elbow_joint"
-    type="fixed">
+    type="fixed"> <!--change to fixed-->
     <origin
       xyz="0.0030284 0 -0.17141"
       rpy="0 0 0" />
@@ -553,6 +567,7 @@
       link="R_arm_shoulder_yaw_Link" />
     <child
       link="R_arm_elbow_Link" />
+    <!--
     <axis
       xyz="0 1 0" />
     <limit
@@ -560,10 +575,11 @@
       upper="1"
       effort="27"
       velocity="10" />
+    -->
   </joint>
   <link
     name="R_arm_hand_link">
-    <inertial>
+   <inertial>
       <origin
         xyz="-2.6372E-08 0.00036865 -0.014941"
         rpy="0 0 0" />
@@ -970,7 +986,7 @@
         rpy="0 0 0" />
       <mass
         value="1.9691" />
-      <inertia
+     <inertia
         ixx="0.0020007"
         ixy="1.7283E-05"
         ixz="3.6844E-06"

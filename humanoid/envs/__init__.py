@@ -4,24 +4,13 @@ from humanoid.utils.task_registry import task_registry
 
 # ---------------------------------------------- Base ----------------------------------------------
 from .n2.n2_env import N2Env
-from .n2.n2_config import N2_10DofCfg, N2_10DofCfgPPO
-from .n2.n2_dwl_config import N2DWLRoughCfg, N2DWLRoughCfgPPO
+from .n2.n2_config import N2_18DofCfg, N2_18DofCfgPPO
+from .n2.n2_10dof_env import N2_10dof_Env
+from .n2.n2_10dof_config import N2_10dof_Cfg, N2_10dof_CfgPPO
 
-task_registry.register( "n2", N2Env, N2_10DofCfg(), N2_10DofCfgPPO() )
-task_registry.register( "n2_dwl", N2Env, N2DWLRoughCfg(), N2DWLRoughCfgPPO() )
 
-# ---------------------------------------------- AMP ----------------------------------------------
-from .n2.n2_amp_env import N2AMPEnv
-from .n2.n2_jumping_env import N2JumpingEnv
-from .n2.n2_10dof_amp_config import N2_10DofAMPCfg, N2_10DofAMPCfgPPO
-from .n2.n2_18dof_amp_config import N2_18DofAMPCfg, N2_18DofAMPCfgPPO
-from .n2.n2_20dof_amp_config import N2_20DofAMPCfg, N2_20DofAMPCfgPPO
-from .n2.n2_jumping_config import N2JumpingCfg, NingAMPJumpingCfgPPO
-
-task_registry.register( "n2_10dof_amp", N2AMPEnv, N2_10DofAMPCfg(), N2_10DofAMPCfgPPO() )
-task_registry.register( "n2_18dof_amp", N2AMPEnv, N2_18DofAMPCfg(), N2_18DofAMPCfgPPO() )
-task_registry.register( "n2_20dof_amp", N2AMPEnv, N2_20DofAMPCfg(), N2_20DofAMPCfgPPO() )
-task_registry.register( "n2_jumping", N2JumpingEnv, N2JumpingCfg(), NingAMPJumpingCfgPPO() )
+task_registry.register( "n2", N2Env, N2_18DofCfg(), N2_18DofCfgPPO() )
+task_registry.register( "n2_10dof", N2_10dof_Env, N2_10dof_Cfg(), N2_10dof_CfgPPO() )
 
 # ---------------------------------------------- Mimic ----------------------------------------------
 from .n2.n2_mimic_env import N2MimicEnv

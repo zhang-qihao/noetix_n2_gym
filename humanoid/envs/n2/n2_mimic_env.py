@@ -156,7 +156,7 @@ class N2MimicEnv(N2Env):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, termination_ids, \
-            termination_priveleged_obs, None
+            termination_priveleged_obs
     
     def  _get_phase(self):
         current_time = self.episode_length_buf * self.dt + self.motion_start_times
@@ -164,81 +164,98 @@ class N2MimicEnv(N2Env):
         return phase
     
     def compute_ref_state(self):
+        """计算参考状态"""
         phase = self._get_phase()
+        # 计算运动时间
         motion_times = (phase * self.motion_lenth).clamp(min=0.0, max=self.motion_lenth-self.dt).cpu().numpy()
         frames = self.motion_loader.get_full_frame_at_time_batch(np.array([0] * self.num_envs), motion_times)
 
+        # 获取参考线速度和角速度
         ref_lin_vel = self.motion_loader_class.get_linear_vel_batch(frames)
         self.ref_lin_vel = quat_rotate_inverse(self.base_quat, ref_lin_vel)
 
         ref_ang_vel = self.motion_loader_class.get_angular_vel_batch(frames)
         self.ref_ang_vel = quat_rotate_inverse(self.base_quat, ref_ang_vel)
 
+        # 获取参考关节位置、速度和关键点位置
         self.ref_dof_pos = self.motion_loader_class.get_joint_pose_batch(frames)
         self.ref_dof_vel = self.motion_loader_class.get_joint_vel_batch(frames)
         self.ref_key_pos = self.motion_loader_class.get_tar_toe_pos_local_batch(frames)
         self.ref_contact_mask = self.motion_loader_class.get_contact_mask_batch(frames)
 
     def post_physics_step(self):
-        """ check terminations, compute observations and rewards
-            calls self._post_physics_step_callback() for common computations 
+        """ 检查终止条件，计算观测值和奖励
+            调用self._post_physics_step_callback()进行通用计算 
         """
+        # 刷新张量
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
 
+        # 更新计数器
         self.episode_length_buf += 1
         self.common_step_counter += 1
         self.last_episode_length_buf = self.episode_length_buf.clone()
 
-        # prepare quantities
+        # 准备数量
         self.base_pos[:] = self.root_states[:, 0:3]
         self.base_quat[:] = self.root_states[:, 3:7]
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
+        # 计算接触状态
         self.contacts = self.contact_forces[:, self.feet_indices, 2] > 5.
         self.contacts_filt = torch.logical_or(self.contacts, self.last_contacts).float()
 
         self._post_physics_step_callback()
 
-        # compute observations, rewards, resets, ...
+        # 计算观测值、奖励、重置等
         self.check_termination()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         termination_privileged_obs = self.privileged_obs_buf[env_ids].clone()
         self.reset_idx(env_ids)
         
+        # 领域随机化
         if self.cfg.domain_rand.push_robots:
             self._push_robots()
         
         if self.cfg.domain_rand.disturbance:
             self._disturbance_robots()
 
-        self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
+        self.compute_observations() # 在某些情况下可能需要模拟步骤来刷新某些观测值（例如身体位置）
 
+        # 更新历史动作和速度
         self.last_last_actions[:] = self.last_actions[:]
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
         self.last_contacts[:] = self.contacts[:]
 
+        # 调试可视化
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
             self._draw_debug_vis()
         return env_ids, termination_privileged_obs, None
     
     def check_termination(self):
-        """ Check if environments need to be reset
-        """
+        """ 检查环境是否需要重置 """
+        # 检查接触力终止条件
         self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 5., dim=1)
-        time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
+        # 超时终止条件（超时无终端奖励）
+        time_out_buf = self.episode_length_buf > self.max_episode_length
         self.reset_buf |= time_out_buf
+        
+        # 重力终止条件
         if self.cfg.termination.terminate_by_gravity:
             reset_terminate_by_gravity = torch.norm(self.projected_gravity[:, 0:2], dim=-1) > self.cfg.termination.scales.termination_gravity
             self.reset_buf |= reset_terminate_by_gravity
+            
+        # 倒下终止条件
         if self.cfg.termination.terminate_by_fallen:
             fallen_buf = (self.root_states[:, 2] - self.terrain_h) < self.cfg.termination.scales.termination_height
             self.reset_buf |= fallen_buf
+            
+        # 运动距离过远终止条件
         if self.cfg.termination.terminate_when_motion_far:
             root_pos = self.root_states[:, :3].clone() 
             key_pos = (self.key_pos - root_pos.unsqueeze(1))
@@ -246,29 +263,32 @@ class N2MimicEnv(N2Env):
             reset_buf_motion_far = torch.any(torch.norm(ref_key_pos - key_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
             self.reset_buf_terminate_by_motion_far = reset_buf_motion_far
             self.reset_buf |= reset_buf_motion_far
+            
+        # 运动结束终止条件
         if self.cfg.termination.terminate_when_motion_end:
             current_time = (self.episode_length_buf) * self.dt + self.motion_start_times
             self.reset_buf_terminate_by_motion_end = current_time > self.motion_lenth
             self.time_out_buf |= self.reset_buf_terminate_by_motion_end
     
     def reset_idx(self, env_ids):
-        """ Reset some environments.
-            Calls self._reset_dofs(env_ids), self._reset_root_states(env_ids), and self._resample_commands(env_ids)
-            [Optional] calls self._update_terrain_curriculum(env_ids), self.update_command_curriculum(env_ids) and
-            Logs episode info
-            Resets some buffers
+        """ 重置某些环境。
+            调用self._reset_dofs(env_ids), self._reset_root_states(env_ids), 和 self._resample_commands(env_ids)
+            [可选] 调用self._update_terrain_curriculum(env_ids), self.update_command_curriculum(env_ids) 和
+            记录episode信息
+            重置一些缓冲区
 
         Args:
-            env_ids (list[int]): List of environment ids which must be reset
+            env_ids (list[int]): 必须重置的环境ID列表
         """
         if len(env_ids) == 0:
             return
         
+        # 清除观测历史
         if self.cfg.env.frame_stack is not None:
-            # clear observation history
             for i in range(self.obs_history.maxlen):
                 self.obs_history[i][env_ids] *= 0
-        # update curriculum
+                
+        # 更新课程
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
         if self.use_reward_penalty_curriculum:
@@ -276,12 +296,13 @@ class N2MimicEnv(N2Env):
         if self.cfg.termination.terminate_when_motion_far and self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum:
             self._update_terminate_when_motion_far_curriculum()
         
+        # 重采样运动时间
         self._resample_motion_times(env_ids)
-        # reset robot states
+        # 重置机器人状态
         self._reset_dofs_motion(env_ids, self.motion_start_times[env_ids])
         self._reset_root_states_motion(env_ids, self.motion_start_times[env_ids])
 
-        # reset buffers
+        # 重置缓冲区
         self.actions[env_ids] = 0.
         self.last_actions[env_ids] = 0.
         self.last_last_actions[env_ids] = 0.
@@ -293,12 +314,12 @@ class N2MimicEnv(N2Env):
         self.episode_length_buf[env_ids] = 0.
         self._update_average_episode_length(env_ids)
 
-        # update height measurements
+        # 更新高度测量
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
         self.terrain_h = self._get_ground_heights()
 
-        # reset randomized prop
+        # 重置随机化属性
         if self.cfg.domain_rand.randomize_gains:
             self.Kp_factors[env_ids] = torch_rand_float(self.cfg.domain_rand.p_gain_range[0], self.cfg.domain_rand.p_gain_range[1], (len(env_ids), self.num_actions), device=self.device)
             self.Kd_factors[env_ids] = torch_rand_float(self.cfg.domain_rand.d_gain_range[0], self.cfg.domain_rand.d_gain_range[1], (len(env_ids), self.num_actions), device=self.device)
@@ -307,60 +328,72 @@ class N2MimicEnv(N2Env):
 
         self._refresh_actor_rigid_shape_props(env_ids)
 
-        # fill extras
+        # 填充额外信息
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
-        # log additional curriculum info
+            
+        # 记录额外的课程信息
         if self.cfg.terrain.mesh_type == "trimesh":
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
             self.extras["episode"]["min_command_x"] = self.command_ranges["lin_vel_x"][0]
-        # send timeout info to the algorithm
+            
+        # 发送超时信息给算法
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
         self.extras["episode"]["end_epis_length"] = self.last_episode_length_buf[env_ids]
         
-        # fix reset gravity bug
+        # 修复重置重力bug
         self.base_quat[env_ids] = self.root_states[env_ids, 3:7]
         self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
         self.projected_gravity[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.gravity_vec[env_ids])
     
     def _resample_motion_times(self, env_ids):
+        """重采样运动时间"""
         if len(env_ids) == 0:
             return
+        # 测试模式下设置为0.0
         if self.cfg.env.test:
             self.motion_start_times[env_ids] = 0.0
         else:
+            # 随机采样运动开始时间
             self.motion_start_times[env_ids] = torch_rand_float(0.0, self.motion_lenth - self.dt,(len(env_ids), 1), device=self.device).squeeze(-1)
     
     def _update_average_episode_length(self, env_ids):
+        """更新平均episode长度"""
         num = len(env_ids)
         current_average_episode_length = torch.mean(self.last_episode_length_buf[env_ids], dtype=torch.float)
         self.average_episode_length = self.average_episode_length * (1 - num / self.num_compute_average_epl) + current_average_episode_length * (num / self.num_compute_average_epl)
 
     def compute_reward(self):
-        """ Compute rewards
-            Calls each reward function which had a non-zero scale (processed in self._prepare_reward_function())
-            adds each terms to the episode sums and to the total reward
+        """ 计算奖励
+            调用每个具有非零缩放比例的奖励函数（在self._prepare_reward_function()中处理）
+            将每个项添加到episode总和和总奖励中
         """
         self.rew_buf[:] = 0.
+        # 遍历所有奖励函数
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
             rew = self.reward_functions[i]() * self.reward_scales[name]
+            # 奖励惩罚课程处理
             if name in self.cfg.rewards.reward_penalty_reward_names:
                 if self.cfg.rewards.reward_penalty_curriculum:
                     rew *= self.reward_penalty_scale
+            # 累加奖励
             if self.cfg.rewards.use_vec_reward:
                 self.rew_buf[:,i] += rew
             else:
                 self.rew_buf += rew
             self.episode_sums[name] += rew
+            
+        # 只保留正奖励
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
-        # add termination reward after clipping
+            
+        # 添加终止奖励（裁剪后）
         if "termination" in self.reward_scales:
             rew = self._reward_termination() * self.reward_scales["termination"]
             self.rew_buf += rew
@@ -368,13 +401,13 @@ class N2MimicEnv(N2Env):
     
     def _update_reward_penalty_curriculum(self):
         """
-        Update the penalty curriculum based on the average episode length.
+        根据平均episode长度更新惩罚课程。
 
-        If the average episode length is below the penalty level down threshold,
-        decrease the penalty scale by a certain level degree.
-        If the average episode length is above the penalty level up threshold,
-        increase the penalty scale by a certain level degree.
-        Clip the penalty scale within the specified range.
+        如果平均episode长度低于惩罚级别下降阈值，
+        按一定级别程度减少惩罚缩放。
+        如果平均episode长度高于惩罚级别上升阈值，
+        按一定级别程度增加惩罚缩放。
+        在指定范围内裁剪惩罚缩放。
 
         Returns:
             None
@@ -387,69 +420,79 @@ class N2MimicEnv(N2Env):
         self.reward_penalty_scale = np.clip(self.reward_penalty_scale, self.cfg.rewards.reward_min_penalty_scale, self.cfg.rewards.reward_max_penalty_scale)
     
     def _update_terminate_when_motion_far_curriculum(self):
+        """更新运动距离过远终止课程"""
         assert self.cfg.termination.terminate_when_motion_far and self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum
+        # 根据平均episode长度调整终止阈值
         if self.average_episode_length < self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum_level_down_threshold:
             self.terminate_when_motion_far_threshold *= (1 + self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum_degree)
         elif self.average_episode_length > self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum_level_up_threshold:
             self.terminate_when_motion_far_threshold *= (1 - self.cfg.termination.termination_curriculum.terminate_when_motion_far_curriculum_degree)
+        # 裁剪终止阈值
         self.terminate_when_motion_far_threshold = np.clip(self.terminate_when_motion_far_threshold, 
                                                          self.cfg.termination.termination_curriculum.terminate_when_motion_far_threshold_min, 
                                                          self.cfg.termination.termination_curriculum.terminate_when_motion_far_threshold_max)
     
     def compute_observations(self):
-        """ Computes observations
-        """
+        """ 计算观测值 """
+        # 获取相位信息
         phase = self._get_phase().unsqueeze(1)
         self.compute_ref_state()
 
+        # 计算正弦和余弦相位
         sin_pos = torch.sin(2 * torch.pi * phase)
         cos_pos = torch.cos(2 * torch.pi * phase)
 
-        obs_buf = torch.cat((   sin_pos,                                        
-                                cos_pos,    
-                                self.base_ang_vel  * self.obs_scales.ang_vel,
-                                self.projected_gravity,  
-                                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                                self.dof_vel * self.obs_scales.dof_vel,
-                                self.actions
+        # 构建基础观测缓冲区
+        obs_buf = torch.cat((   sin_pos,                                        # 正弦相位
+                                cos_pos,                                       # 余弦相位
+                                self.base_ang_vel  * self.obs_scales.ang_vel,  # 基座角速度
+                                self.projected_gravity,                        # 投影重力
+                                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,  # 关节位置偏差
+                                self.dof_vel * self.obs_scales.dof_vel,        # 关节速度
+                                self.actions                                   # 当前动作
                             ),dim=-1)
         
+        # 计算关键点位置
         root_pos = self.root_states[:, :3].clone() 
         key_pos = (self.key_pos - root_pos.unsqueeze(1)).view(self.num_envs, -1) 
         ref_key_pos = self.ref_key_pos.clone()
+        
+        # 构建特权观测缓冲区
         self.privileged_obs_buf = torch.cat((  
-                                    sin_pos,                                        
-                                    cos_pos, 
-                                    self.base_ang_vel  * self.obs_scales.ang_vel,
-                                    self.projected_gravity,  
-                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                                    self.dof_vel * self.obs_scales.dof_vel,
-                                    self.actions,
-                                    self.base_lin_vel * self.obs_scales.lin_vel,
-                                    self.payload * 0.5,
-                                    self.friction_coeffs,
-                                    self.restitution_coeffs,
-                                    self.Kp_factors,
-                                    self.Kd_factors,
-                                    self.motor_strength,
-                                    key_pos,
-                                    ref_key_pos,
-                                    self.contacts_filt
+                                    sin_pos,                                        # 正弦相位
+                                    cos_pos,                                        # 余弦相位
+                                    self.base_ang_vel  * self.obs_scales.ang_vel,   # 基座角速度
+                                    self.projected_gravity,                         # 投影重力
+                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,  # 关节位置偏差
+                                    self.dof_vel * self.obs_scales.dof_vel,         # 关节速度
+                                    self.actions,                                   # 当前动作
+                                    self.base_lin_vel * self.obs_scales.lin_vel,    # 基座线速度
+                                    self.payload * 0.5,                             # 负载信息
+                                    self.friction_coeffs,                           # 摩擦系数
+                                    self.restitution_coeffs,                        # 恢复系数
+                                    self.Kp_factors,                                # Kp因子
+                                    self.Kd_factors,                                # Kd因子
+                                    self.motor_strength,                            # 电机强度
+                                    key_pos,                                        # 关键点位置
+                                    ref_key_pos,                                    # 参考关键点位置
+                                    self.contacts_filt                              # 接触滤波器
                                 ),dim=-1)
         
+        # 如果配置了地形高度测量，添加高度信息
         if self.cfg.terrain.measure_heights:
             heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
             self.privileged_obs_buf = torch.cat((self.privileged_obs_buf, heights), dim=-1)
 
-        # add perceptive inputs if not blind
-        # add noise if needed
+        # 根据需要添加噪声
         if self.add_noise:  
             obs_now = obs_buf.clone() + torch.randn_like(obs_buf) * self.noise_scale_vec * self.cfg.noise.noise_level
         else:
             obs_now = obs_buf.clone()
         
+        # 处理帧堆叠
         if self.cfg.env.frame_stack is not None:
             self.obs_history.append(obs_now)
+            # 堆叠历史观测
             obs_buf_all = torch.stack([self.obs_history[i]
                                     for i in range(self.obs_history.maxlen)], dim=1)  # N,T,K
             self.obs_buf = obs_buf_all.reshape(self.num_envs, -1)  # N, T*K
@@ -458,20 +501,26 @@ class N2MimicEnv(N2Env):
 
 # ================================================ Sigma ================================================== #
     def _init_adaptive_sigma(self):
+        """初始化自适应sigma"""
+        # 如果未启用自适应跟踪sigma，将更新函数设置为空函数
         if not self.cfg.rewards.enable_adaptive_tracking_sigma:
             self._update_adaptive_sigma = lambda *args, **kwargs: None
             return
+        # 初始化奖励误差指数移动平均
         self._reward_error_ema = dict()
         for key, value in self.cfg.rewards.reward_tracking_sigma.items():
             self._reward_error_ema[key] = value
     
     def _update_adaptive_sigma(self, error:torch.Tensor, term:str):
-        alpha = self.cfg.rewards.tracking_sigma_alpha
-        scale = self.cfg.rewards.tracking_sigma_scale 
-        adptype = self.cfg.rewards.tracking_sigma_type
+        """更新自适应sigma"""
+        alpha = self.cfg.rewards.tracking_sigma_alpha   # 指数移动平均alpha参数
+        scale = self.cfg.rewards.tracking_sigma_scale   # 缩放因子
+        adptype = self.cfg.rewards.tracking_sigma_type  # 更新类型
         
+        # 更新误差指数移动平均
         self._reward_error_ema[term] = self._reward_error_ema[term] * (1-alpha) + error.mean().item() * alpha
         
+        # 根据类型更新sigma
         if adptype == "scale":
             self.cfg.rewards.reward_tracking_sigma[term] = min(self._reward_error_ema[term] * scale, 
                                                                 self.cfg.rewards.reward_tracking_sigma[term])
@@ -484,37 +533,44 @@ class N2MimicEnv(N2Env):
                                                                 self.cfg.rewards.reward_tracking_sigma[term])
     
     def _reset_dofs_motion(self, env_ids, motion_times):
+        """重置关节运动"""
+        # 获取轨迹索引和时间
         traj_idxs = np.array([0] * motion_times.shape[0])
         times = motion_times.clone().cpu().numpy()
         frames = self.motion_loader.get_full_frame_at_time_batch(traj_idxs, times)
 
+        # 设置关节位置和速度
         self.dof_pos[env_ids] = self.motion_loader_class.get_joint_pose_batch(frames)
         self.dof_vel[env_ids] = self.motion_loader_class.get_joint_vel_batch(frames)
         env_ids_int32 = env_ids.to(dtype=torch.int32)
+        # 设置关节状态张量
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_root_states_motion(self, env_ids, motion_times):
-        """ Resets ROOT states position and velocities of selected environmments
-            Sets base position based on the curriculum
-            Selects randomized base velocities within -0.5:0.5 [m/s, rad/s]
+        """ 重置选定环境的ROOT状态位置和速度
+            根据课程设置基座位置
+            选择-0.5:0.5范围内的随机基座速度[m/s, rad/s]
         Args:
-            env_ids (List[int]): Environemnt ids
+            env_ids (List[int]): 环境ID
         """
+        # 获取轨迹索引和时间
         traj_idxs = np.array([0] * motion_times.shape[0])
         times = motion_times.clone().cpu().numpy()
         frames = self.motion_loader.get_full_frame_at_time_batch(traj_idxs, times)
 
-        # base position
+        # 基座位置
         root_pos = self.motion_loader_class.get_root_pos_batch(frames)
         root_pos[:, :3] = root_pos[:, :3] + self.env_origins[env_ids, :3] + 0.02
         self.root_states[env_ids, :3] = root_pos
+        # 基座姿态和速度
         root_orn = self.motion_loader_class.get_root_rot_batch(frames)
         self.root_states[env_ids, 3:7] = root_orn
         self.root_states[env_ids, 7:10] = self.motion_loader_class.get_linear_vel_batch(frames)
         self.root_states[env_ids, 10:13] = self.motion_loader_class.get_angular_vel_batch(frames)
 
+        # 设置根状态张量
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
@@ -522,37 +578,48 @@ class N2MimicEnv(N2Env):
         
 # ================================================ Rewards ================================================== #
     def _reward_tracking_body_pos(self):
+        """身体位置跟踪奖励"""
+        # 计算根位置和关键点位置
         root_pos = self.root_states[:, :3].clone() 
         key_pos = (self.key_pos - root_pos.unsqueeze(1))
         ref_key_pos = self.ref_key_pos.reshape(self.num_envs, -1, 3)
         
+        # 计算上半身和下半身位置差异
         upper_body_diff = ref_key_pos[:, self.upper_body_indices, :] - key_pos[:, self.upper_body_indices, :]
         lower_body_diff = ref_key_pos[:, self.lower_body_indices, :] - key_pos[:, self.lower_body_indices, :]
 
+        # 计算身体位置距离
         diff_body_pos_dist_upper = (upper_body_diff**2).mean(dim=-1).mean(dim=-1)
         diff_body_pos_dist_lower = (lower_body_diff**2).mean(dim=-1).mean(dim=-1)
 
+        # 指数衰减奖励
         r_body_pos_upper = torch.exp(-diff_body_pos_dist_upper / self.cfg.rewards.reward_tracking_sigma["tracking_upper_body_pos"])
         r_body_pos_lower = torch.exp(-diff_body_pos_dist_lower / self.cfg.rewards.reward_tracking_sigma["tracking_lower_body_pos"])
         rew = r_body_pos_lower + r_body_pos_upper 
     
+        # 更新自适应sigma
         self._update_adaptive_sigma(diff_body_pos_dist_upper, 'tracking_upper_body_pos')
         self._update_adaptive_sigma(diff_body_pos_dist_lower, 'tracking_lower_body_pos')
         return rew
     
     def _reward_tracking_feet_pos(self):
+        """足部位置跟踪奖励"""
+        # 计算根位置和关键点位置
         root_pos = self.root_states[:, :3].clone() 
         key_pos = (self.key_pos - root_pos.unsqueeze(1))
         ref_key_pos = self.ref_key_pos.reshape(self.num_envs, -1, 3)
         
+        # 计算足部位置差异
         feet_diff = ref_key_pos[:, self.feet_indices, :] - key_pos[:, self.feet_indices, :]
         feet_dist = (feet_diff**2).mean(dim=-1).mean(dim=-1)
         rew = torch.exp(-feet_dist / self.cfg.rewards.reward_tracking_sigma["tracking_feet_pos"])
         
+        # 更新自适应sigma
         self._update_adaptive_sigma(feet_dist, 'tracking_feet_pos')
         return rew
     
     def _reward_tracking_body_vel(self):
+        """身体速度跟踪奖励"""
         body_vel = self.base_lin_vel.clone()
         body_vel_target = self.ref_lin_vel.clone()
         diff = ((body_vel - body_vel_target) ** 2).mean(dim=-1)
@@ -561,6 +628,7 @@ class N2MimicEnv(N2Env):
         return rew
     
     def _reward_tracking_body_ang_vel(self):
+        """身体角速度跟踪奖励"""
         body_ang_vel = self.base_ang_vel.clone()
         body_ang_vel_target = self.ref_ang_vel.clone()
         diff = ((body_ang_vel - body_ang_vel_target) ** 2).mean(dim=-1)
@@ -569,8 +637,10 @@ class N2MimicEnv(N2Env):
         return rew
     
     def _reward_tracking_joint_pos(self):
+        """关节位置跟踪奖励"""
         joint_pos = self.dof_pos.clone()
         pos_target = self.ref_dof_pos.clone()
+        # 将踝关节位置设为0
         joint_pos[:, self.ankle_dof_idxs] = 0.0
         pos_target[:, self.ankle_dof_idxs] = 0.0
         diff = ((joint_pos - pos_target) ** 2).mean(dim=-1)
@@ -579,8 +649,10 @@ class N2MimicEnv(N2Env):
         return rew
     
     def _reward_tracking_joint_vel(self):
+        """关节速度跟踪奖励"""
         joint_vel = self.dof_vel.clone()
         vel_target = self.ref_dof_vel.clone()
+        # 将踝关节速度设为0
         joint_vel[:, self.ankle_dof_idxs] = 0.0
         vel_target[:, self.ankle_dof_idxs] = 0.0
         diff = ((joint_vel - vel_target) ** 2).mean(dim=-1)
@@ -589,31 +661,39 @@ class N2MimicEnv(N2Env):
         return rew
     
     def _reward_tracking_max_joint_pos(self):
+        """最大关节位置跟踪奖励"""
         joint_pos = self.dof_pos.clone()
         pos_target = self.ref_dof_pos.clone()
+        # 将踝关节位置设为0
         joint_pos[:, self.ankle_dof_idxs] = 0.0
         pos_target[:, self.ankle_dof_idxs] = 0.0
+        # 计算最大关节位置差异
         max_diff_joint_pos = ((joint_pos - pos_target).abs()).max(dim=-1)[0]
         r_max_joint_pos = torch.exp(-max_diff_joint_pos / self.cfg.rewards.reward_tracking_sigma["tracking_max_joint_pos"])
         
+        # 更新自适应sigma
         self._update_adaptive_sigma(max_diff_joint_pos, 'tracking_max_joint_pos')
         return r_max_joint_pos
     
     def _reward_tracking_contact_mask(self):
+        """接触掩码跟踪奖励"""
         cur_contact_mask = self.contacts_filt
         ref_contact_mask = self.ref_contact_mask
         
+        # 计算接触掩码误差
         error_contact_mask = (cur_contact_mask - ref_contact_mask).abs()
 
         rew = 1 - error_contact_mask.mean(dim=-1)
         return rew
     
     def _reward_feet_air_time(self):
-        # Reward long steps
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
+        """足部悬空时间奖励"""
+        # 奖励长步幅
+        # 需要过滤接触，因为PhysX在网格上的接触报告不可靠
         contact_filt = torch.logical_or(self.contacts, self.last_contacts) 
         first_contact = (self.feet_air_time > 0.) * contact_filt
         self.feet_air_time += self.dt
-        rew_airTime = torch.sum((self.feet_air_time - 0.3) * first_contact, dim=1) # reward only on first contact with the ground
+        # 仅在首次接触地面时给予奖励
+        rew_airTime = torch.sum((self.feet_air_time - 0.3) * first_contact, dim=1)
         self.feet_air_time *= ~contact_filt
         return rew_airTime

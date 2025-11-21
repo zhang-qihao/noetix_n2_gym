@@ -192,35 +192,11 @@ class _TorchPolicyExporter(torch.nn.Module):
         super().__init__()
         self.actor = copy.deepcopy(actor_critic.actor)
         self.is_recurrent = actor_critic.is_recurrent
-        if self.is_recurrent:
-            self.rnn = copy.deepcopy(actor_critic.memory_a.rnn)
-            self.rnn.cpu()
-            self.register_buffer("hidden_state", torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size))
-            self.register_buffer("cell_state", torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size))
-            self.forward = self.forward_lstm
-            self.reset = self.reset_memory
-        if hasattr(actor_critic, 'estimator'):
-            self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
-            self.forward = self.forward_him
-        # copy normalizer if exists
+
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
         else:
             self.normalizer = torch.nn.Identity()
-
-    def forward_lstm(self, x):
-        x = self.normalizer(x)
-        x, (h, c) = self.rnn(x.unsqueeze(0), (self.hidden_state, self.cell_state))
-        self.hidden_state[:] = h
-        self.cell_state[:] = c
-        x = x.squeeze(0)
-        return self.actor(x)
-    
-    def forward_him(self, obs_history):
-        parts = self.estimator(obs_history)
-        vel, z = parts[..., :3], parts[..., 3:]
-        z = F.normalize(z, dim=-1, p=2.0)
-        return self.actor(torch.cat((obs_history, vel, z), dim=1))
 
     def forward(self, x):
         return self.actor(self.normalizer(x))
@@ -248,70 +224,19 @@ class _OnnxPolicyExporter(torch.nn.Module):
         self.verbose = verbose
         self.actor = copy.deepcopy(actor_critic.actor)
         self.is_recurrent = actor_critic.is_recurrent
-        if self.is_recurrent:
-            self.embodied = copy.deepcopy(actor_critic.embodied)
-            self.rnn = copy.deepcopy(actor_critic.dwl_model.encoder.rnn)
-            self.rnn.cpu()
-            self.forward = self.forward_lstm
-        if hasattr(actor_critic, 'estimator'):
-            self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
-            self.forward = self.forward_him
-        # copy normalizer if exists
+
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
         else:
             self.normalizer = torch.nn.Identity()
-    
-    def forward_lstm(self, x_in, h_in, c_in):
-        x_in = self.normalizer(x_in)
-        x, (h, c) = self.rnn(x_in.unsqueeze(0), (h_in, c_in))
-        x = x.squeeze(0)
-        actor_input = self.embodied(x)
-        return self.actor(actor_input), h, c
-    
-    def forward_him(self, obs_history):
-        parts = self.estimator(obs_history)
-        vel, z = parts[..., :3], parts[..., 3:]
-        z = F.normalize(z, dim=-1, p=2.0)
-        return self.actor(torch.cat((obs_history[:, -62:], vel, z), dim=1))
 
     def forward(self, x):
         return self.actor(self.normalizer(x))
 
     def export(self, path, filename):
         self.to("cpu")
-        if self.is_recurrent:
-            obs = torch.zeros(1, self.rnn.input_size)
-            h_in = torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size)
-            c_in = torch.zeros(self.rnn.num_layers, 1, self.rnn.hidden_size)
-            actions, h_out, cout = self(obs, h_in, c_in)
-            torch.onnx.export(
-                self,
-                (obs, h_in, c_in),
-                os.path.join(path, filename),
-                export_params=True,
-                opset_version=11,
-                verbose=self.verbose,
-                input_names=["policy_input", "h_in", "c_in"],
-                output_names=["policy_output", "h_out", "c_out"],
-                dynamic_axes={},
-            )
-        elif hasattr(self, 'estimator'):
-            obs = torch.zeros(1, self.estimator[0].in_features)
-            torch.onnx.export(
-                self,
-                obs,
-                os.path.join(path, filename),
-                export_params=True,
-                opset_version=11,
-                verbose=self.verbose,
-                input_names=["policy_input"],
-                output_names=["policy_output"],
-                dynamic_axes={},
-            )
-        else:
-            obs = torch.zeros(1, self.actor[0].in_features)
-            torch.onnx.export(
+        obs = torch.zeros(1, self.actor[0].in_features)
+        torch.onnx.export(
                 self,
                 obs,
                 os.path.join(path, filename),
